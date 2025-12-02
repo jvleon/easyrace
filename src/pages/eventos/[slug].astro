@@ -166,14 +166,26 @@ const isUpcoming = eventDate && !isCompleted;
   <body class="min-h-screen bg-black-asphalt flex flex-col">
     <Header />
     <main class="flex-1">
-      {event.banner_url && (
+      {(event.banner_url || event.mobile_banner_url) && (
         <div class="w-full h-[400px] relative overflow-hidden bg-black-asphalt/30">
-          <img
-            src={getBannerUrl(event.banner_url)}
-            alt={event.name}
-            class="w-full h-full object-cover object-center"
-            loading="eager"
-          />
+          {/* Banner móvil (visible solo en pantallas ≤500px) */}
+          {event.mobile_banner_url && (
+            <img
+              src={getBannerUrl(event.mobile_banner_url)}
+              alt={event.name}
+              class="w-full h-full object-cover object-center max-[500px]:block hidden"
+              loading="eager"
+            />
+          )}
+          {/* Banner desktop (visible en pantallas >500px o si no hay banner móvil) */}
+          {event.banner_url && (
+            <img
+              src={getBannerUrl(event.banner_url)}
+              alt={event.name}
+              class={`w-full h-full object-cover object-center ${event.mobile_banner_url ? 'max-[500px]:hidden block' : 'block'}`}
+              loading="eager"
+            />
+          )}
           <div class="absolute inset-0 bg-gradient-to-t from-black-asphalt/50 to-transparent pointer-events-none"></div>
         </div>
       )}

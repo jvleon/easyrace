@@ -12,6 +12,7 @@ interface Event {
   slug: string;
   date: string;
   banner_url: string | null;
+  mobile_banner_url: string | null;
 }
 
 // Consulta eventos con filtros:
@@ -20,7 +21,7 @@ interface Event {
 // - date IS NOT NULL (debe tener fecha)
 const { data: events, error } = await supabase
   .from('events')
-  .select('id, name, slug, date, banner_url, status')
+  .select('id, name, slug, date, banner_url, mobile_banner_url, status')
   .in('status', ['published', 'completed'])
   .not('name', 'is', null)
   .not('date', 'is', null)
@@ -72,6 +73,7 @@ const validEvents: Event[] = (events || []).filter(
               slug={event.slug}
               date={event.date}
               bannerUrl={getBannerUrl(event.banner_url)}
+              mobileBannerUrl={getBannerUrl(event.mobile_banner_url)}
               client:load
             />
           ))}
