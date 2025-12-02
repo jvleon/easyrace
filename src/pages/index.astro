@@ -1,0 +1,82 @@
+---
+import { supabase } from '../lib/supabase';
+import EventCard from '../components/EventCard';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+
+interface Event {
+  id: string;
+  name: string;
+  slug: string;
+  date: string;
+  banner_url: string | null;
+}
+
+// Consulta eventos con filtros:
+// - status = 'published' o 'completed' (eventos publicados y completados)
+// - name IS NOT NULL (debe tener nombre)
+// - date IS NOT NULL (debe tener fecha)
+const { data: events, error } = await supabase
+  .from('events')
+  .select('id, name, slug, date, banner_url, status')
+  .in('status', ['published', 'completed'])
+  .not('name', 'is', null)
+  .not('date', 'is', null)
+  .order('date', { ascending: true });
+
+// Filtro adicional en JavaScript para asegurar que name y date existan
+const validEvents: Event[] = (events || []).filter(
+  (event) => event.name && event.name.trim() !== '' && event.date
+) as Event[];
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content="EasyRace - plataforma para gestion de eventos deportivos" />
+    <title>EasyRace - Eventos Deportivos</title>
+  </head>
+  <body class="min-h-screen bg-black-asphalt flex flex-col">
+    <Header />
+    <main class="container mx-auto px-4 pt-4 pb-8 md:pt-6 md:pb-12 flex-1">
+      <header class="mb-8 md:mb-12 text-center">
+        <h1 class="text-4xl md:text-5xl font-bold text-white-pure mb-4">
+          Eventos Deportivos
+        </h1>
+        <p class="text-white-pure/70 text-lg max-w-2xl mx-auto">
+          Descubre y participa en los mejores eventos deportivos
+        </p>
+      </header>
+
+      {error ? (
+        <div class="bg-red-fire/20 border border-red-fire rounded-lg p-6 text-center">
+          <p class="text-white-pure">Error al cargar los eventos. Por favor, intenta más tarde.</p>
+        </div>
+      ) : validEvents.length === 0 ? (
+        <div class="text-center py-12">
+          <p class="text-white-pure/70 text-lg">
+            No hay eventos disponibles en este momento.
+          </p>
+        </div>
+      ) : (
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+          {validEvents.map((event) => (
+            <EventCard
+              id={event.id}
+              name={event.name}
+              slug={event.slug}
+              date={event.date}
+              bannerUrl={event.banner_url}
+              client:load
+            />
+          ))}
+        </div>
+      )}
+    </main>
+    <Footer />
+  </body>
+</html>

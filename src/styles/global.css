@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-black-asphalt text-white-pure;
+  }
+  
+  * {
+    @apply border-white-pure/10;
+  }
+}
+
+@layer utilities {
+  .prose {
+    @apply text-white-pure;
+  }
+  
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4,
+  .prose h5,
+  .prose h6 {
+    @apply text-white-pure;
+  }
+  
+  .prose p {
+    @apply text-white-pure/90;
+  }
+  
+  .prose a {
+    @apply text-orange-primary hover:text-red-fire;
+  }
+  
+  .prose strong {
+    @apply text-white-pure;
+  }
+  
+  .prose ul,
+  .prose ol {
+    @apply text-white-pure/90;
+  }
+  
+  .prose ul {
+    @apply list-disc list-outside pl-6 ml-4;
+  }
+  
+  .prose ol {
+    @apply list-decimal list-outside pl-6 ml-4;
+  }
+  
+  .prose li {
+    @apply my-1;
+  }
+  
+  /* Asegurar que los bullets/números sean visibles */
+  .prose ul li::marker,
+  .prose ol li::marker {
+    color: rgb(255 255 255 / 0.9);
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-in;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  /* Estilos para selects con fondo oscuro y texto visible */
+  select {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: #FFF !important;
+  }
+  
+  select option {
+    background-color: #212121 !important;
+    color: #FFF !important;
+  }
+  
+  /* Para navegadores que soportan ::-ms-expand (Edge/IE) */
+  select::-ms-expand {
+    display: none;
+  }
+}
+
