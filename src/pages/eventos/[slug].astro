@@ -2,6 +2,7 @@
 import { supabase } from '../../lib/supabase';
 import { formatEventDate, isRegistrationOpen } from '../../utils/dateFormatter';
 import { slateToHtml } from '../../utils/slateToHtml';
+import { getBannerUrl } from '../../utils/imageUrl';
 import RegistrationButton from '../../components/RegistrationButton';
 import Countdown from '../../components/Countdown';
 import Header from '../../components/Header.astro';
@@ -168,7 +169,7 @@ const isUpcoming = eventDate && !isCompleted;
       {event.banner_url && (
         <div class="w-full h-[400px] relative overflow-hidden bg-black-asphalt/30">
           <img
-            src={event.banner_url}
+            src={getBannerUrl(event.banner_url)}
             alt={event.name}
             class="w-full h-full object-cover object-center"
             loading="eager"

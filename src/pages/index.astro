@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import EventCard from '../components/EventCard';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import { getBannerUrl } from '../utils/imageUrl';
 import '../styles/global.css';
 
 interface Event {
@@ -70,7 +71,7 @@ const validEvents: Event[] = (events || []).filter(
               name={event.name}
               slug={event.slug}
               date={event.date}
-              bannerUrl={event.banner_url}
+              bannerUrl={getBannerUrl(event.banner_url)}
               client:load
             />
           ))}
