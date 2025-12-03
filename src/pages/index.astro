@@ -1,36 +1,8 @@
 ---
-import { supabase } from '../lib/supabase';
-import EventCard from '../components/EventCard';
+import EventsList from '../components/EventsList';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import { getBannerUrl } from '../utils/imageUrl';
 import '../styles/global.css';
-
-interface Event {
-  id: string;
-  name: string;
-  slug: string;
-  date: string;
-  banner_url: string | null;
-  mobile_banner_url: string | null;
-}
-
-// Consulta eventos con filtros:
-// - status = 'published' o 'completed' (eventos publicados y completados)
-// - name IS NOT NULL (debe tener nombre)
-// - date IS NOT NULL (debe tener fecha)
-const { data: events, error } = await supabase
-  .from('events')
-  .select('id, name, slug, date, banner_url, mobile_banner_url, status')
-  .in('status', ['published', 'completed'])
-  .not('name', 'is', null)
-  .not('date', 'is', null)
-  .order('date', { ascending: true });
-
-// Filtro adicional en JavaScript para asegurar que name y date existan
-const validEvents: Event[] = (events || []).filter(
-  (event) => event.name && event.name.trim() !== '' && event.date
-) as Event[];
 ---
 
 <html lang="es">
@@ -54,31 +26,7 @@ const validEvents: Event[] = (events || []).filter(
         </p>
       </header>
 
-      {error ? (
-        <div class="bg-red-fire/20 border border-red-fire rounded-lg p-6 text-center">
-          <p class="text-white-pure">Error al cargar los eventos. Por favor, intenta más tarde.</p>
-        </div>
-      ) : validEvents.length === 0 ? (
-        <div class="text-center py-12">
-          <p class="text-white-pure/70 text-lg">
-            No hay eventos disponibles en este momento.
-          </p>
-        </div>
-      ) : (
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-          {validEvents.map((event) => (
-            <EventCard
-              id={event.id}
-              name={event.name}
-              slug={event.slug}
-              date={event.date}
-              bannerUrl={getBannerUrl(event.banner_url)}
-              mobileBannerUrl={getBannerUrl(event.mobile_banner_url)}
-              client:load
-            />
-          ))}
-        </div>
-      )}
+      <EventsList client:load />
     </main>
     <Footer />
   </body>
