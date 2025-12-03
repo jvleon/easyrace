@@ -79,6 +79,12 @@ export function parseRegistrationConfig(
       label: 'Correo electrónico',
       required: true,
     },
+    {
+      name: 'club_id',
+      type: 'select',
+      label: 'Club',
+      required: true,
+    },
   ];
 
   if (!config) {
@@ -93,12 +99,11 @@ export function parseRegistrationConfig(
       .filter((field) => field.enabled !== false) // Filtrar campos deshabilitados
       .map((field) => {
         const fieldId = field.id || field.name || '';
-        // Excluir first_name, last_name y email ya que siempre están al inicio
-        if (fieldId === 'first_name' || fieldId === 'last_name' || fieldId === 'email') {
+        // Excluir first_name, last_name, email y club_id ya que siempre están al inicio
+        if (fieldId === 'first_name' || fieldId === 'last_name' || fieldId === 'email' || fieldId === 'club_id' || fieldId === 'club') {
           return null;
         }
-        // Normalizar club a club_id para manejo unificado
-        const normalizedFieldId = fieldId === 'club' ? 'club_id' : fieldId;
+        const normalizedFieldId = fieldId;
         // Evitar duplicados
         if (seenFields.has(normalizedFieldId)) {
           return null;
@@ -119,16 +124,14 @@ export function parseRegistrationConfig(
     const allFields = [...new Set([...required, ...optional])];
 
     additionalFields = allFields
-      .filter((fieldName) => fieldName !== 'first_name' && fieldName !== 'last_name' && fieldName !== 'email')
+      .filter((fieldName) => fieldName !== 'first_name' && fieldName !== 'last_name' && fieldName !== 'email' && fieldName !== 'club_id' && fieldName !== 'club')
       .map((fieldName) => {
-        // Normalizar club a club_id para manejo unificado
-        const normalizedFieldName = fieldName === 'club' ? 'club_id' : fieldName;
         return {
-          name: normalizedFieldName,
-          type: (fieldTypes[normalizedFieldName] || 'text') as ParsedField['type'],
-          label: fieldLabels[normalizedFieldName] || normalizedFieldName,
+          name: fieldName,
+          type: (fieldTypes[fieldName] || 'text') as ParsedField['type'],
+          label: fieldLabels[fieldName] || fieldName,
           required: required.includes(fieldName),
-          options: getFieldOptions(normalizedFieldName),
+          options: getFieldOptions(fieldName),
         };
       });
   }

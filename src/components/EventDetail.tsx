@@ -5,9 +5,19 @@ import { slateToHtml } from '../utils/slateToHtml';
 import { getBannerUrl } from '../utils/imageUrl';
 import RegistrationButton from './RegistrationButton';
 import Countdown from './Countdown';
+import { FiDownload } from 'react-icons/fi';
 
 interface EventDetailProps {
   slug: string;
+}
+
+interface EventData {
+  id: string;
+  name: string;
+  slug: string;
+  date: string;
+  max_competitors: number | null;
+  [key: string]: any;
 }
 
 interface CategoryWithDistance {
@@ -34,15 +44,48 @@ interface DistanceGroup {
 }
 
 export default function EventDetail({ slug }: EventDetailProps) {
-  const [event, setEvent] = useState<any>(null);
+  const [event, setEvent] = useState<EventData | null>(null);
   const [categories, setCategories] = useState<CategoryWithDistance[]>([]);
   const [distanceGroups, setDistanceGroups] = useState<DistanceGroup[]>([]);
+  const [registeredCount, setRegisteredCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadEventData();
   }, [slug]);
+
+  // Efecto para cargar el script de Strava cuando hay embeds
+  useEffect(() => {
+    if (distanceGroups.length > 0 && distanceGroups.some(g => g.stravaEmbed)) {
+      // Verificar si el script ya está cargado
+      const existingScript = document.querySelector('script#strava-embed-script');
+      if (!existingScript) {
+        const script = document.createElement('script');
+        script.src = 'https://strava-embeds.com/embed.js';
+        script.async = true;
+        script.id = 'strava-embed-script';
+        document.body.appendChild(script);
+        
+        // Forzar re-render de los embeds después de cargar el script
+        script.onload = () => {
+          // Esperar un poco para que el script se inicialice completamente
+          setTimeout(() => {
+            if (window.StravaEmbeds && typeof window.StravaEmbeds.load === 'function') {
+              window.StravaEmbeds.load();
+            }
+          }, 100);
+        };
+      } else {
+        // Si el script ya está cargado, esperar un poco y forzar re-inicialización
+        setTimeout(() => {
+          if (window.StravaEmbeds && typeof window.StravaEmbeds.load === 'function') {
+            window.StravaEmbeds.load();
+          }
+        }, 100);
+      }
+    }
+  }, [distanceGroups]);
 
   const loadEventData = async () => {
     try {
@@ -62,6 +105,39 @@ export default function EventDetail({ slug }: EventDetailProps) {
       }
 
       setEvent(eventData);
+
+      // Cargar conteo de competidores registrados usando función de BD
+      // Esto evita problemas con RLS y no expone datos sensibles
+      const { data: countData, error: countError } = await supabase.rpc('get_competitors_count', {
+        event_id_param: eventData.id
+      });
+
+      console.log('[EventDetail] Count function result:', { 
+        count: countData, 
+        countError, 
+        eventId: eventData.id 
+      });
+
+      if (!countError && countData !== null && countData !== undefined) {
+        const count = typeof countData === 'number' ? countData : parseInt(countData, 10) || 0;
+        setRegisteredCount(count);
+        console.log('[EventDetail] Competidores registrados:', count, 'Max:', eventData.max_competitors);
+      } else {
+        console.error('[EventDetail] Error cargando conteo con función:', countError);
+        // Fallback: intentar con consulta directa si la función falla
+        const { data: competitorsData, error: dataError } = await supabase
+          .from('competitors')
+          .select('id')
+          .eq('event_id', eventData.id);
+        
+        if (!dataError && competitorsData) {
+          const count = competitorsData.length;
+          setRegisteredCount(count);
+          console.log('[EventDetail] Conteo fallback:', count);
+        } else {
+          setRegisteredCount(0);
+        }
+      }
 
       // Cargar categorías
       const { data: categoriesData, error: categoriesError } = await supabase
@@ -225,20 +301,35 @@ export default function EventDetail({ slug }: EventDetailProps) {
             )}
           </header>
 
-          <div className="mb-8 flex flex-col items-center md:items-start gap-4">
+          <div className="mb-8 flex flex-col items-center md:items-start gap-4 md:flex-row">
             {isCompleted ? (
               <div className="w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg bg-white-pure/20 text-white-pure/70 text-center">
                 Evento completado, gracias a los participantes
               </div>
             ) : (
               <RegistrationButton
+                key={`${event.id}-${registeredCount}`}
                 eventId={event.id}
                 eventSlug={event.slug}
                 registrationConfig={event.registration_config}
                 registrationOpen={registrationOpen}
                 generalPrice={event.general_price}
                 currency={event.currency || 'MXN'}
+                maxCompetitors={event.max_competitors}
+                registeredCount={registeredCount}
               />
+            )}
+
+            {event.liability_waiver_pdf_url && (
+              <a
+                href={event.liability_waiver_pdf_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg transition-colors bg-white-pure/10 hover:bg-white-pure/20 text-white-pure flex items-center justify-center gap-2"
+              >
+                <FiDownload className="h-5 w-5" />
+                Carta Responsiva
+              </a>
             )}
           </div>
 
@@ -279,7 +370,11 @@ export default function EventDetail({ slug }: EventDetailProps) {
                         <h4 className="text-lg font-semibold text-white-pure mb-4">
                           Ruta en Strava
                         </h4>
-                        <div dangerouslySetInnerHTML={{ __html: group.stravaEmbed }} />
+                        <div 
+                          dangerouslySetInnerHTML={{ __html: group.stravaEmbed }}
+                          className="strava-embed-container"
+                          key={`strava-${group.distanceId}`}
+                        />
                       </div>
                     )}
 

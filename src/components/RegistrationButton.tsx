@@ -23,6 +23,8 @@ interface RegistrationButtonProps {
   disabledText?: string;
   generalPrice?: number | null;
   currency?: string;
+  maxCompetitors?: number | null;
+  registeredCount?: number;
 }
 
 export default function RegistrationButton({
@@ -34,9 +36,40 @@ export default function RegistrationButton({
   disabledText = 'Próximamente',
   generalPrice,
   currency = 'MXN',
+  maxCompetitors,
+  registeredCount = 0,
 }: RegistrationButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [eventPricing, setEventPricing] = useState<EventPricing | null>(null);
+
+  // Verificar si se alcanzó el máximo de competidores
+  // Convertir a números para asegurar comparación correcta
+  const maxCompetitorsNum = maxCompetitors !== null && maxCompetitors !== undefined ? Number(maxCompetitors) : null;
+  const registeredCountNum = Number(registeredCount) || 0;
+  
+  // Si maxCompetitors está definido y registeredCount >= maxCompetitors, se alcanzó el máximo
+  const isMaxReached = 
+    maxCompetitorsNum !== null && 
+    maxCompetitorsNum > 0 && 
+    registeredCountNum >= maxCompetitorsNum;
+  
+  const isDisabled = !registrationOpen || isMaxReached;
+  const displayText = isMaxReached ? 'Sin lugares disponibles' : (registrationOpen ? buttonText : disabledText);
+
+  // Debug temporal - remover después
+  useEffect(() => {
+    if (maxCompetitorsNum !== null) {
+      console.log('[RegistrationButton] Debug:', {
+        maxCompetitors: maxCompetitorsNum,
+        registeredCount: registeredCountNum,
+        registeredCountRaw: registeredCount,
+        isMaxReached,
+        isDisabled,
+        registrationOpen
+      });
+    }
+  }, [maxCompetitorsNum, registeredCount, registeredCountNum, isMaxReached, isDisabled, registrationOpen]);
+
 
   useEffect(() => {
     if (isModalOpen) {
@@ -69,23 +102,25 @@ export default function RegistrationButton({
   return (
     <>
       <button
-        onClick={() => registrationOpen && setIsModalOpen(true)}
+        onClick={() => !isDisabled && setIsModalOpen(true)}
         className={`w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg transition-colors ${
-          registrationOpen
+          !isDisabled
             ? 'bg-orange-primary hover:bg-red-fire text-white-pure cursor-pointer'
             : 'bg-white-pure/20 text-white-pure/50 cursor-not-allowed'
         }`}
-        disabled={!registrationOpen}
+        disabled={isDisabled}
       >
-        {registrationOpen ? buttonText : disabledText}
+        {displayText}
       </button>
       <RegistrationModal
         eventId={eventId}
         eventSlug={eventSlug}
         registrationConfig={registrationConfig}
-        isOpen={isModalOpen}
+        isOpen={isModalOpen && !isMaxReached}
         onClose={() => setIsModalOpen(false)}
         eventPricing={eventPricing}
+        maxCompetitors={maxCompetitorsNum}
+        registeredCount={registeredCountNum}
       />
     </>
   );

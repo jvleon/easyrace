@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { parseRegistrationConfig, type ParsedField } from '../utils/registrationConfigParser';
 import { uploadIdPhotoToCloudflare } from '../utils/cloudflare';
+import { validateEmailNotTemporary } from '../utils/emailValidation';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader } from 'react-icons/fi';
 
 interface Category {
@@ -9,6 +10,11 @@ interface Category {
   name: string;
   price: number | null;
   gender: string | null; // 'male', 'female', or null (mixed)
+  distance_id: string | null;
+  event_distances: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 interface Club {
@@ -29,6 +35,8 @@ interface RegistrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   eventPricing?: EventPricing | null;
+  maxCompetitors?: number | null;
+  registeredCount?: number;
 }
 
 export default function RegistrationModal({
@@ -38,6 +46,8 @@ export default function RegistrationModal({
   isOpen,
   onClose,
   eventPricing,
+  maxCompetitors,
+  registeredCount = 0,
 }: RegistrationModalProps) {
   const [fields, setFields] = useState<ParsedField[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -50,7 +60,7 @@ export default function RegistrationModal({
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [clubSelectionMode, setClubSelectionMode] = useState<'select' | 'manual'>('select');
+  const [clubNotInList, setClubNotInList] = useState<boolean>(false);
   const [selectedClubId, setSelectedClubId] = useState<string>('');
   const [manualClubName, setManualClubName] = useState<string>('');
   const [selectedGender, setSelectedGender] = useState<string>(''); // 'male' o 'female'
@@ -59,18 +69,36 @@ export default function RegistrationModal({
   useEffect(() => {
     if (isOpen) {
       const parsedFields = parseRegistrationConfig(registrationConfig);
-      // Ordenar campos: obligatorios primero, opcionales después
-      const sortedFields = [
-        ...parsedFields.filter((f) => f.required),
-        ...parsedFields.filter((f) => !f.required),
+      // Ordenar campos: mantener orden de campos base (first_name, last_name, email, club_id) y luego el resto
+      // Separar campos base, campos de emergencia y otros campos
+      const baseFieldNames = ['first_name', 'last_name', 'email', 'club_id'];
+      const emergencyFieldNames = ['emergency_contact_name', 'emergency_contact_phone'];
+      
+      const baseFields = parsedFields.filter((f) => baseFieldNames.includes(f.name));
+      const emergencyFields = parsedFields.filter((f) => emergencyFieldNames.includes(f.name));
+      const otherFields = parsedFields.filter((f) => !baseFieldNames.includes(f.name) && !emergencyFieldNames.includes(f.name));
+      
+      // Ordenar otros campos: obligatorios primero, opcionales después
+      const sortedOtherFields = [
+        ...otherFields.filter((f) => f.required),
+        ...otherFields.filter((f) => !f.required),
       ];
+      
+      // Ordenar campos de emergencia: obligatorios primero, opcionales después
+      const sortedEmergencyFields = [
+        ...emergencyFields.filter((f) => f.required),
+        ...emergencyFields.filter((f) => !f.required),
+      ];
+      
+      // Combinar: campos base en orden + otros campos ordenados + campos de emergencia al final
+      const sortedFields = [...baseFields, ...sortedOtherFields, ...sortedEmergencyFields];
       setFields(sortedFields);
       setFormData({});
       setErrors({});
       setSuccess(false);
       setSuccessMessage('');
       setSubmitError(null);
-      setClubSelectionMode('select');
+      setClubNotInList(false);
       setSelectedClubId('');
       setManualClubName('');
       setSelectedGender('');
@@ -103,7 +131,17 @@ export default function RegistrationModal({
       setLoading(true);
       const { data, error } = await supabase
         .from('categories')
-        .select('id, name, price, gender')
+        .select(`
+          id,
+          name,
+          price,
+          gender,
+          distance_id,
+          event_distances (
+            id,
+            name
+          )
+        `)
         .eq('event_id', eventId)
         .order('name');
 
@@ -187,8 +225,8 @@ export default function RegistrationModal({
     }
 
     fields.forEach((field) => {
-      // Saltar validación de gender y category_id ya que se validan arriba
-      if (field.name === 'gender' || field.name === 'category_id') {
+      // Saltar validación de gender, category_id y club_id ya que se validan arriba o en sección especial
+      if (field.name === 'gender' || field.name === 'category_id' || field.name === 'club_id' || field.name === 'club') {
         return;
       }
 
@@ -203,6 +241,8 @@ export default function RegistrationModal({
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(formData[field.name])) {
           newErrors[field.name] = 'Correo electrónico inválido';
+        } else if (!validateEmailNotTemporary(formData[field.name])) {
+          newErrors[field.name] = 'No se permiten cuentas de email temporales. Por favor, usa una cuenta de email válida.';
         }
       }
 
@@ -217,13 +257,14 @@ export default function RegistrationModal({
 
     // Validar club
     if (fields.some((f) => f.name === 'club_id' || f.name === 'club')) {
-      if (clubSelectionMode === 'select' && !selectedClubId) {
-        // Solo validar si es requerido
+      if (!clubNotInList && !selectedClubId) {
+        // Si el checkbox NO está marcado y no hay club seleccionado
         const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
         if (clubField?.required) {
-          newErrors.club = 'Debes seleccionar un equipo o escribir uno manualmente';
+          newErrors.club = 'Debes seleccionar un equipo o marcar "Mi club no está en la lista"';
         }
-      } else if (clubSelectionMode === 'manual' && !manualClubName.trim()) {
+      } else if (clubNotInList && !manualClubName.trim()) {
+        // Si el checkbox SÍ está marcado y el nombre manual está vacío
         const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
         if (clubField?.required) {
           newErrors.club = 'Debes escribir el nombre del equipo';
@@ -305,6 +346,15 @@ export default function RegistrationModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Verificar si se alcanzó el máximo antes de permitir el registro
+    if (maxCompetitors !== null && maxCompetitors !== undefined && maxCompetitors > 0) {
+      const currentCount = Number(registeredCount) || 0;
+      if (currentCount >= maxCompetitors) {
+        setSubmitError('Lo sentimos, el evento ha alcanzado el máximo de competidores registrados.');
+        return;
+      }
+    }
+
     if (!validateForm()) {
       return;
     }
@@ -328,14 +378,16 @@ export default function RegistrationModal({
       });
 
       // Manejar club/equipo
-      if (clubSelectionMode === 'select' && selectedClubId) {
+      if (!clubNotInList && selectedClubId) {
+        // Si el checkbox NO está marcado, usar el select
         if (selectedClubId === 'independent') {
           competitorData.club = 'Independiente';
           competitorData.club_id = null;
         } else {
           competitorData.club_id = selectedClubId;
         }
-      } else if (clubSelectionMode === 'manual' && manualClubName.trim()) {
+      } else if (clubNotInList && manualClubName.trim()) {
+        // Si el checkbox SÍ está marcado, usar el nombre manual
         competitorData.club = manualClubName.trim();
         competitorData.club_id = null;
       }
@@ -371,6 +423,7 @@ export default function RegistrationModal({
         setFormData({});
         setSelectedClubId('');
         setManualClubName('');
+        setClubNotInList(false);
       }, 5000);
     } catch (error: any) {
       console.error('Error submitting registration:', error);
@@ -469,11 +522,16 @@ export default function RegistrationModal({
                       style={{ backgroundColor: '#212121', color: '#FFF' }}
                     >
                       <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona una categoría</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                          {cat.name} {cat.price !== null && cat.price > 0 ? `- $${cat.price} ${eventPricing?.currency || 'MXN'}` : ''}
-                        </option>
-                      ))}
+                      {categories.map((cat) => {
+                        const distanceName = cat.event_distances?.name || '';
+                        const priceText = cat.price !== null && cat.price > 0 ? `- $${cat.price} ${eventPricing?.currency || 'MXN'}` : '';
+                        const displayText = [cat.name, distanceName, priceText].filter(Boolean).join(' ');
+                        return (
+                          <option key={cat.id} value={cat.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                            {displayText}
+                          </option>
+                        );
+                      })}
                     </select>
                     {errors.category_id && (
                       <p className="mt-1 text-sm text-red-fire">{errors.category_id}</p>
@@ -498,70 +556,75 @@ export default function RegistrationModal({
                               {field.required && <span className="text-red-fire ml-1">*</span>}
                             </label>
                             
-                            <div className="flex gap-2 mb-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setClubSelectionMode('select');
-                                  setManualClubName('');
-                                  handleChange('club', '');
-                                }}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                  clubSelectionMode === 'select'
-                                    ? 'bg-orange-primary text-white-pure'
-                                    : 'bg-white-pure/10 text-white-pure/70 hover:bg-white-pure/20'
-                                }`}
-                              >
-                                Seleccionar equipo
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setClubSelectionMode('manual');
-                                  setSelectedClubId('');
-                                  handleChange('club_id', '');
-                                }}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                  clubSelectionMode === 'manual'
-                                    ? 'bg-orange-primary text-white-pure'
-                                    : 'bg-white-pure/10 text-white-pure/70 hover:bg-white-pure/20'
-                                }`}
-                              >
-                                Escribir manualmente
-                              </button>
-                            </div>
+                            <select
+                              value={selectedClubId}
+                              onChange={(e) => {
+                                setSelectedClubId(e.target.value);
+                                handleChange('club_id', e.target.value);
+                                handleChange('club', '');
+                              }}
+                              disabled={clubNotInList}
+                              {...(field.required && !clubNotInList ? { required: true } : {})}
+                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ backgroundColor: '#212121', color: '#FFF' }}
+                            >
+                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
+                              <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
+                              {clubs.map((club) => (
+                                <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                  {club.name}
+                                </option>
+                              ))}
+                            </select>
 
-                            {clubSelectionMode === 'select' ? (
-                              <select
-                                value={selectedClubId}
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={clubNotInList}
                                 onChange={(e) => {
-                                  setSelectedClubId(e.target.value);
-                                  handleChange('club_id', e.target.value);
-                                  handleChange('club', '');
+                                  const checked = e.target.checked;
+                                  setClubNotInList(checked);
+                                  // Limpiar errores de validación del club
+                                  setErrors((prev) => {
+                                    const newErrors = { ...prev };
+                                    delete newErrors.club;
+                                    return newErrors;
+                                  });
+                                  if (checked) {
+                                    // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
+                                    setSelectedClubId('');
+                                    handleChange('club_id', '');
+                                  } else {
+                                    // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
+                                    setManualClubName('');
+                                    handleChange('club', '');
+                                  }
                                 }}
-                                required={field.required}
-                                className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                                style={{ backgroundColor: '#212121', color: '#FFF' }}
-                              >
-                                <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
-                                <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
-                                {clubs.map((club) => (
-                                  <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                    {club.name}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
+                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                              />
+                              <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                            </label>
+
+                            {clubNotInList && (
                               <input
                                 type="text"
                                 value={manualClubName}
                                 onChange={(e) => {
-                                  setManualClubName(e.target.value);
-                                  handleChange('club', e.target.value);
+                                  const value = e.target.value;
+                                  setManualClubName(value);
+                                  handleChange('club', value);
                                   handleChange('club_id', '');
+                                  // Limpiar error de validación cuando el usuario escribe
+                                  if (errors.club) {
+                                    setErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      delete newErrors.club;
+                                      return newErrors;
+                                    });
+                                  }
                                 }}
                                 placeholder="Escribe el nombre del equipo"
-                                required={field.required}
+                                {...(field.required && clubNotInList ? { required: true } : {})}
                                 className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
                               />
                             )}
@@ -589,68 +652,75 @@ export default function RegistrationModal({
                           {field.label}
                         </label>
                         
-                        <div className="flex gap-2 mb-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setClubSelectionMode('select');
-                              setManualClubName('');
-                              handleChange('club', '');
-                            }}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              clubSelectionMode === 'select'
-                                ? 'bg-orange-primary text-white-pure'
-                                : 'bg-white-pure/10 text-white-pure/70 hover:bg-white-pure/20'
-                            }`}
-                          >
-                            Seleccionar equipo
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setClubSelectionMode('manual');
-                              setSelectedClubId('');
-                              handleChange('club_id', '');
-                            }}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              clubSelectionMode === 'manual'
-                                ? 'bg-orange-primary text-white-pure'
-                                : 'bg-white-pure/10 text-white-pure/70 hover:bg-white-pure/20'
-                            }`}
-                          >
-                            Escribir manualmente
-                          </button>
-                        </div>
+                        <select
+                          value={selectedClubId}
+                          onChange={(e) => {
+                            setSelectedClubId(e.target.value);
+                            handleChange('club_id', e.target.value);
+                            handleChange('club', '');
+                          }}
+                          disabled={clubNotInList}
+                          {...(field.required && !clubNotInList ? { required: true } : {})}
+                          className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ backgroundColor: '#212121', color: '#FFF' }}
+                        >
+                          <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo (opcional)</option>
+                          <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
+                          {clubs.map((club) => (
+                            <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                              {club.name}
+                            </option>
+                          ))}
+                        </select>
 
-                        {clubSelectionMode === 'select' ? (
-                          <select
-                            value={selectedClubId}
+                        <label className="flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={clubNotInList}
                             onChange={(e) => {
-                              setSelectedClubId(e.target.value);
-                              handleChange('club_id', e.target.value);
-                              handleChange('club', '');
+                              const checked = e.target.checked;
+                              setClubNotInList(checked);
+                              // Limpiar errores de validación del club
+                              setErrors((prev) => {
+                                const newErrors = { ...prev };
+                                delete newErrors.club;
+                                return newErrors;
+                              });
+                              if (checked) {
+                                // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
+                                setSelectedClubId('');
+                                handleChange('club_id', '');
+                              } else {
+                                // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
+                                setManualClubName('');
+                                handleChange('club', '');
+                              }
                             }}
-                            className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                            style={{ backgroundColor: '#212121', color: '#FFF' }}
-                          >
-                            <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo (opcional)</option>
-                            <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
-                            {clubs.map((club) => (
-                              <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                {club.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
+                            className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                          />
+                          <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                        </label>
+
+                        {clubNotInList && (
                           <input
                             type="text"
                             value={manualClubName}
                             onChange={(e) => {
-                              setManualClubName(e.target.value);
-                              handleChange('club', e.target.value);
+                              const value = e.target.value;
+                              setManualClubName(value);
+                              handleChange('club', value);
                               handleChange('club_id', '');
+                              // Limpiar error de validación cuando el usuario escribe
+                              if (errors.club) {
+                                setErrors((prev) => {
+                                  const newErrors = { ...prev };
+                                  delete newErrors.club;
+                                  return newErrors;
+                                });
+                              }
                             }}
                             placeholder="Escribe el nombre del equipo"
+                            {...(field.required && clubNotInList ? { required: true } : {})}
                             className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
                           />
                         )}
