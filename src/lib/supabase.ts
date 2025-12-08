@@ -18,5 +18,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(errorMsg);
 }
 
+// Create Supabase client
+// The client automatically handles authentication headers
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Debug: Verificar que el cliente esté inicializado correctamente
+if (typeof window !== 'undefined') {
+  console.log('[Supabase] Client initialized with URL:', supabaseUrl);
+  console.log('[Supabase] Anon key present:', !!supabaseAnonKey);
+}
 

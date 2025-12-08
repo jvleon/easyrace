@@ -508,10 +508,13 @@ export default function RegistrationModal({
       console.log('[RegistrationModal] Kit validation failed - kits available but not selected');
     }
 
-    // Validar talla si el kit tiene tallas
-    if (selectedKitId && kitSizes.length > 0 && !selectedKitSizeId) {
-      newErrors.kit_size_id = 'La talla es requerida';
-      console.log('[RegistrationModal] Kit size validation failed');
+    // Validar talla solo si el kit seleccionado tiene tallas disponibles
+    if (selectedKitId) {
+      const selectedKit = kits.find(k => k.id === selectedKitId);
+      if (selectedKit?.has_sizes && !selectedKitSizeId) {
+        newErrors.kit_size_id = 'La talla es requerida';
+        console.log('[RegistrationModal] Kit size validation failed - kit has sizes but none selected');
+      }
     }
 
     // Validar datos del segundo competidor si es categoría de parejas
@@ -759,16 +762,18 @@ export default function RegistrationModal({
       let competitor1Id: string;
       let competitor2Id: string | null = null;
 
-      // Insertar primer competidor
+      // Insertar primer competidor usando función RPC para evitar problemas de RLS
       console.log('[RegistrationModal] Inserting competitor with data:', competitorData);
-      const { data: insertedData, error } = await supabase.from('competitors').insert([competitorData]).select();
+      const { data: insertedData, error } = await supabase.rpc('insert_competitor', {
+        competitor_data: competitorData
+      });
 
       if (error) {
         console.error('[RegistrationModal] Error inserting competitor:', error);
         throw error;
       }
       console.log('[RegistrationModal] Competitor inserted successfully:', insertedData);
-      competitor1Id = insertedData[0].id;
+      competitor1Id = insertedData.id;
 
       // Si es categoría de parejas, insertar segundo competidor
       if (isPairCategory) {
@@ -822,13 +827,13 @@ export default function RegistrationModal({
         // Asegurar que kit_size_id no esté en pairCompetitorData (no existe en la BD)
         delete pairCompetitorData.kit_size_id;
 
-        const { data: pairInsertedData, error: pairError } = await supabase
-          .from('competitors')
-          .insert([pairCompetitorData])
-          .select();
+        // Insertar segundo competidor usando función RPC
+        const { data: pairInsertedData, error: pairError } = await supabase.rpc('insert_competitor', {
+          competitor_data: pairCompetitorData
+        });
 
         if (pairError) throw pairError;
-        competitor2Id = pairInsertedData[0].id;
+        competitor2Id = pairInsertedData.id;
 
         // Crear relación de pareja
         const { error: pairRelationError } = await supabase

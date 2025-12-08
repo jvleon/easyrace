@@ -8,7 +8,8 @@ import Countdown from './Countdown';
 import KitsSection from './KitsSection';
 import PaymentProofModal from './PaymentProofModal';
 import EventGallery from './EventGallery';
-import { FiDownload, FiUpload } from 'react-icons/fi';
+import EventNavigation from './EventNavigation';
+import { FiDownload, FiUpload, FiHome, FiInfo, FiPackage, FiList, FiImage } from 'react-icons/fi';
 
 interface EventDetailProps {
   slug: string | undefined;
@@ -355,9 +356,22 @@ export default function EventDetail({ slug }: EventDetailProps) {
         <Countdown targetDate={event.date} />
       )}
 
+      <EventNavigation
+        sections={[
+          { id: 'inicio', label: 'Inicio', icon: <FiHome className="w-5 h-5" /> },
+          { id: 'datos-evento', label: 'Datos del Evento', icon: <FiInfo className="w-5 h-5" /> },
+          { id: 'kits', label: 'Kits', icon: <FiPackage className="w-5 h-5" /> },
+          { id: 'categorias', label: 'Categorías', icon: <FiList className="w-5 h-5" /> },
+          { id: 'fotos', label: 'Fotos', icon: <FiImage className="w-5 h-5" /> },
+        ]}
+      />
+
       <div className="container mx-auto px-4 pt-6 pb-8 md:pt-8 md:pb-12">
         <div className="max-w-4xl mx-auto">
-          <header className="mb-8">
+          <header 
+            {...(!isUpcoming || !event.date ? { id: 'inicio' } : {})}
+            className={`mb-8 ${!isUpcoming || !event.date ? 'scroll-mt-32' : ''}`}
+          >
             <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white-pure mb-4">
               {event.name}
             </h1>
@@ -420,26 +434,30 @@ export default function EventDetail({ slug }: EventDetailProps) {
             onClose={() => setIsPaymentProofModalOpen(false)}
           />
 
-          {event.page_description && (
-            <div
-              className="prose prose-invert max-w-none text-white-pure mb-12"
-              dangerouslySetInnerHTML={{ __html: slateToHtml(event.page_description) }}
-            />
-          )}
+          <div id="datos-evento" className="scroll-mt-32">
+            {event.page_description && (
+              <div
+                className="prose prose-invert max-w-none text-white-pure mb-12"
+                dangerouslySetInnerHTML={{ __html: slateToHtml(event.page_description) }}
+              />
+            )}
 
-          {!event.page_description && event.description && (
-            <div className="prose prose-invert max-w-none mb-12">
-              <p className="text-white-pure/90 text-lg leading-relaxed">
-                {event.description}
-              </p>
-            </div>
-          )}
+            {!event.page_description && event.description && (
+              <div className="prose prose-invert max-w-none mb-12">
+                <p className="text-white-pure/90 text-lg leading-relaxed">
+                  {event.description}
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Sección de Kits */}
-          <KitsSection eventId={event.id} />
+          <div id="kits" className="scroll-mt-32">
+            <KitsSection eventId={event.id} />
+          </div>
 
           {distanceGroups.length > 0 && (
-            <section className="mb-12">
+            <section id="categorias" className="mb-12 scroll-mt-32">
               <h2 className="text-2xl md:text-3xl font-bold text-white-pure mb-8">
                 Distancias y Categorías
               </h2>
@@ -491,7 +509,9 @@ export default function EventDetail({ slug }: EventDetailProps) {
           )}
 
           {/* Sección de Galería - Después de categorías */}
-          <EventGallery eventId={event.id} />
+          <div id="fotos" className="scroll-mt-32">
+            <EventGallery eventId={event.id} />
+          </div>
         </div>
       </div>
     </div>

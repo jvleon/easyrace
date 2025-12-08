@@ -48,7 +48,7 @@ export default function Countdown({ targetDate }: CountdownProps) {
   }
 
   return (
-    <div className="w-full bg-black-asphalt/80 backdrop-blur-sm border-y border-white-pure/20 py-4 md:py-6">
+    <div id="inicio" className="w-full bg-black-asphalt/80 backdrop-blur-sm border-y border-white-pure/20 py-4 md:py-6 scroll-mt-32">
       <div className="container mx-auto px-4">
         <div className="max-w-4xl mx-auto">
           <p className="text-white-pure/70 text-sm md:text-base text-center mb-3 md:mb-4">
