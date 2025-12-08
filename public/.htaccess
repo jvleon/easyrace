@@ -1,0 +1,14 @@
+# Rewrite rules para rutas dinámicas de eventos
+# Esto permite que eventos nuevos funcionen sin rebuild
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  
+  # Si la ruta /eventos/* no existe como archivo o directorio,
+  # redirigir a /eventos/dynamic/ que siempre existe
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^eventos/(.+)$ /eventos/dynamic/ [L]
+</IfModule>
+
+

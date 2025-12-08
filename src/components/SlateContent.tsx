@@ -12,3 +12,4 @@ export default function SlateContent({ content }: SlateContentProps) {
   return <>{renderSlateContent(content)}</>;
 }
 
+

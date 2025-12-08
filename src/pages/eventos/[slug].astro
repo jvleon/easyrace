@@ -5,26 +5,43 @@ import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
 import '../../styles/global.css';
 
-// Para modo estático, necesitamos generar todas las rutas en build time
-// Solo generamos las rutas, los datos se cargan dinámicamente en el cliente
+// Generar todas las rutas posibles en build time
+// Los datos se cargan dinámicamente del lado del cliente
 export async function getStaticPaths() {
-  const { data: events, error } = await supabase
-    .from('events')
-    .select('slug')
-    .in('status', ['published', 'completed'])
-    .not('name', 'is', null)
-    .not('date', 'is', null);
+  try {
+    const { data: events, error } = await supabase
+      .from('events')
+      .select('slug')
+      .in('status', ['published', 'completed'])
+      .not('name', 'is', null)
+      .not('date', 'is', null);
 
-  if (error || !events) {
-    return [];
+    if (error || !events) {
+      console.warn('Error loading events for static paths:', error);
+      // Retornar una ruta genérica como fallback
+      return [{ params: { slug: 'dynamic' } }];
+    }
+
+    // Generar rutas para todos los eventos existentes
+    const paths = events.map((event) => ({
+      params: { slug: event.slug },
+    }));
+
+    // Agregar una ruta genérica para eventos nuevos que no estén en build time
+    // El componente obtendrá el slug desde la URL
+    paths.push({ params: { slug: 'dynamic' } });
+
+    return paths;
+  } catch (error) {
+    console.error('Error in getStaticPaths:', error);
+    // Retornar una ruta genérica como fallback
+    return [{ params: { slug: 'dynamic' } }];
   }
-
-  return events.map((event) => ({
-    params: { slug: event.slug },
-  }));
 }
 
 const { slug } = Astro.params;
+// Si el slug es 'dynamic', el componente lo obtendrá de la URL
+const eventSlug = slug === 'dynamic' ? undefined : slug;
 ---
 
 <html lang="es">
@@ -38,8 +55,8 @@ const { slug } = Astro.params;
   </head>
   <body class="min-h-screen bg-black-asphalt flex flex-col">
     <Header />
-    <main class="flex-1">
-      <EventDetail slug={slug} client:load />
+    <main class="flex-1 p-0 m-0 w-full">
+      <EventDetail slug={eventSlug} client:load />
     </main>
     <Footer />
   </body>

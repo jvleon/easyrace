@@ -8,7 +8,7 @@ import Countdown from './Countdown';
 import { FiDownload } from 'react-icons/fi';
 
 interface EventDetailProps {
-  slug: string;
+  slug: string | undefined;
 }
 
 interface EventData {
@@ -52,7 +52,27 @@ export default function EventDetail({ slug }: EventDetailProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadEventData();
+    // Siempre obtener el slug desde la URL del navegador para que funcione con eventos nuevos
+    // Esto permite que eventos agregados después del build funcionen sin rebuild
+    let currentSlug: string | undefined = undefined;
+
+    if (typeof window !== 'undefined') {
+      // Extraer el slug de la URL: /eventos/reto-chacamax-2026 -> reto-chacamax-2026
+      const pathParts = window.location.pathname.split('/eventos/');
+      if (pathParts.length > 1) {
+        currentSlug = pathParts[1].split('/')[0];
+      }
+    }
+
+    // Si no se puede obtener de la URL, usar el prop como fallback
+    if (!currentSlug) {
+      currentSlug = slug;
+    }
+
+    // Ignorar slugs especiales como 'dynamic' o '*'
+    if (currentSlug && currentSlug !== '*' && currentSlug !== 'dynamic') {
+      loadEventData(currentSlug);
+    }
   }, [slug]);
 
   // Efecto para cargar el script de Strava cuando hay embeds
@@ -66,7 +86,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
         script.async = true;
         script.id = 'strava-embed-script';
         document.body.appendChild(script);
-        
+
         // Forzar re-render de los embeds después de cargar el script
         script.onload = () => {
           // Esperar un poco para que el script se inicialice completamente
@@ -87,16 +107,23 @@ export default function EventDetail({ slug }: EventDetailProps) {
     }
   }, [distanceGroups]);
 
-  const loadEventData = async () => {
+  const loadEventData = async (eventSlug?: string) => {
     try {
       setLoading(true);
       setError(null);
+
+      // Usar el slug proporcionado o el de la prop, o extraerlo de la URL
+      const currentSlug = eventSlug || slug || (typeof window !== 'undefined' ? window.location.pathname.split('/eventos/')[1]?.split('/')[0] : '');
+
+      if (!currentSlug) {
+        throw new Error('Slug no encontrado');
+      }
 
       // Cargar evento
       const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('*')
-        .eq('slug', slug)
+        .eq('slug', currentSlug)
         .in('status', ['published', 'completed'])
         .single();
 
@@ -112,10 +139,10 @@ export default function EventDetail({ slug }: EventDetailProps) {
         event_id_param: eventData.id
       });
 
-      console.log('[EventDetail] Count function result:', { 
-        count: countData, 
-        countError, 
-        eventId: eventData.id 
+      console.log('[EventDetail] Count function result:', {
+        count: countData,
+        countError,
+        eventId: eventData.id
       });
 
       if (!countError && countData !== null && countData !== undefined) {
@@ -129,7 +156,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
           .from('competitors')
           .select('id')
           .eq('event_id', eventData.id);
-        
+
         if (!dataError && competitorsData) {
           const count = competitorsData.length;
           setRegisteredCount(count);
@@ -256,9 +283,9 @@ export default function EventDetail({ slug }: EventDetailProps) {
   const isUpcoming = eventDate && eventDate > now && !isCompleted;
 
   return (
-    <>
+    <div className="w-full m-0 p-0">
       {(event.banner_url || event.mobile_banner_url) && (
-        <div className="w-full h-[400px] relative overflow-hidden bg-black-asphalt/30">
+        <div className="w-full h-[400px] relative overflow-hidden bg-black-asphalt/30 m-0 p-0">
           {event.mobile_banner_url && (
             <img
               src={getBannerUrl(event.mobile_banner_url)}
@@ -271,7 +298,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
             <img
               src={getBannerUrl(event.banner_url)}
               alt={event.name}
-              className={`w-full h-full object-cover object-center ${event.mobile_banner_url ? 'max-[500px]:hidden block' : 'block'}`}
+              className={`w-full h-full object-contain object-center ${event.mobile_banner_url ? 'max-[500px]:hidden block' : 'block'}`}
               loading="eager"
             />
           )}
@@ -370,7 +397,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
                         <h4 className="text-lg font-semibold text-white-pure mb-4">
                           Ruta en Strava
                         </h4>
-                        <div 
+                        <div
                           dangerouslySetInnerHTML={{ __html: group.stravaEmbed }}
                           className="strava-embed-container"
                           key={`strava-${group.distanceId}`}
@@ -406,8 +433,8 @@ export default function EventDetail({ slug }: EventDetailProps) {
                                   {category.gender === 'male'
                                     ? 'Masculino'
                                     : category.gender === 'female'
-                                    ? 'Femenino'
-                                    : 'Mixto'}
+                                      ? 'Femenino'
+                                      : 'Mixto'}
                                 </p>
                               )}
                             </div>
@@ -422,7 +449,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

@@ -1,0 +1,45 @@
+---
+import EventDetail from '../../components/EventDetail';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import '../../styles/global.css';
+
+// Ruta catch-all que captura cualquier slug dinámicamente
+// Esto permite que nuevos eventos funcionen sin necesidad de rebuild
+// Para catch-all routes en modo estático, necesitamos generar una ruta específica
+export async function getStaticPaths() {
+  // Retornar una ruta específica que siempre se genere
+  // El componente obtendrá el slug real desde la URL del navegador
+  return [{ params: { slug: 'dynamic' } }];
+}
+
+// Obtener el slug desde los parámetros (en catch-all, slug es un array)
+const slugParam = Astro.params.slug;
+// En catch-all, slug es siempre un array, tomamos el primer elemento
+// Si es 'dynamic', el componente lo obtendrá de la URL
+let slug: string | undefined = undefined;
+if (Array.isArray(slugParam) && slugParam.length > 0) {
+  slug = slugParam[0] === 'dynamic' ? undefined : slugParam[0];
+} else if (slugParam && slugParam !== 'dynamic') {
+  slug = slugParam;
+}
+---
+
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content="EasyRace - plataforma para gestion de eventos deportivos" />
+    <title>Evento - EasyRace</title>
+  </head>
+  <body class="min-h-screen bg-black-asphalt flex flex-col">
+    <Header />
+    <main class="flex-1">
+      <EventDetail slug={slug} client:load />
+    </main>
+    <Footer />
+  </body>
+</html>
+
