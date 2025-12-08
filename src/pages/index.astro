@@ -6,14 +6,14 @@ import '../styles/global.css';
 ---
 
 <html lang="es">
-  <head>
-    <meta charset="utf-8" />
+	<head>
+		<meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="generator" content={Astro.generator} />
+		<meta name="generator" content={Astro.generator} />
     <meta name="description" content="EasyRace - plataforma para gestion de eventos deportivos" />
     <title>EasyRace - Eventos Deportivos</title>
-  </head>
+	</head>
   <body class="min-h-screen bg-black-asphalt flex flex-col">
     <Header />
     <main class="container mx-auto px-4 pt-4 pb-8 md:pt-6 md:pb-12 flex-1">
@@ -29,5 +29,5 @@ import '../styles/global.css';
       <EventsList client:load />
     </main>
     <Footer />
-  </body>
+	</body>
 </html>

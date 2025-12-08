@@ -185,6 +185,73 @@ export async function uploadIdPhotoToCloudflare(
 }
 
 /**
+ * Sube una foto social a Cloudflare Images
+ * @param file - Archivo de imagen a subir
+ * @param eventSlug - Slug del evento
+ * @param eventId - ID del evento (opcional)
+ * @returns URL pública de la imagen
+ */
+export async function uploadSocialPhotoToCloudflare(
+  file: File,
+  eventSlug: string,
+  eventId?: string
+): Promise<string> {
+  const validation = validateImageFile(file);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+
+  const randomId = generateRandomId();
+  const customId = `social-media-photo-${eventSlug}-${randomId}`;
+
+  try {
+    const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId, 'social-media-photo');
+    await uploadToCloudflare(file, uploadUrl);
+    return publicUrl;
+  } catch (error) {
+    console.error('Error en uploadSocialPhotoToCloudflare:', error);
+    throw error;
+  }
+}
+
+/**
+ * Sube un comprobante de pago a Cloudflare Images
+ * @param file - Archivo de imagen a subir (JPEG, JPG, PNG, máximo 2MB)
+ * @param eventSlug - Slug del evento
+ * @param eventId - ID del evento (opcional)
+ * @returns URL pública de la imagen
+ */
+export async function uploadPaymentProofToCloudflare(
+  file: File,
+  eventSlug: string,
+  eventId?: string
+): Promise<string> {
+  // Validar que sea JPEG, JPG o PNG
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+  if (!allowedTypes.includes(file.type)) {
+    throw new Error('Solo se permiten archivos JPEG, JPG o PNG');
+  }
+
+  // Validar tamaño (2MB máximo)
+  const maxSize = 2 * 1024 * 1024; // 2 MB
+  if (file.size > maxSize) {
+    throw new Error('La imagen debe ser menor a 2MB');
+  }
+
+  const randomId = generateRandomId();
+  const customId = `payment-proof-${eventSlug}-${randomId}`;
+
+  try {
+    const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId, 'payment-proof');
+    await uploadToCloudflare(file, uploadUrl);
+    return publicUrl;
+  } catch (error) {
+    console.error('Error en uploadPaymentProofToCloudflare:', error);
+    throw error;
+  }
+}
+
+/**
  * Verifica si una URL es de Cloudflare Images
  */
 export function isCloudflareImageUrl(url: string | null | undefined): boolean {

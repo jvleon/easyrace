@@ -37,6 +37,8 @@ const fieldLabels: Record<string, string> = {
   emergency_contact_phone: 'Teléfono de contacto de emergencia',
   allergies: 'Alergias',
   id_photo_url: 'Foto de identificación',
+  social_media_photo_url: 'Foto para redes sociales',
+  payment_proof_url: 'Comprobante de pago',
 };
 
 const fieldTypes: Record<string, ParsedField['type']> = {
@@ -55,6 +57,8 @@ const fieldTypes: Record<string, ParsedField['type']> = {
   emergency_contact_name: 'text',
   allergies: 'textarea',
   id_photo_url: 'file',
+  social_media_photo_url: 'file',
+  payment_proof_url: 'file',
 };
 
 export function parseRegistrationConfig(
@@ -134,6 +138,17 @@ export function parseRegistrationConfig(
           options: getFieldOptions(fieldName),
         };
       });
+  }
+
+  // Agregar foto social automáticamente como campo opcional (si no está ya presente)
+  const hasSocialPhoto = additionalFields.some(f => f.name === 'social_media_photo_url');
+  if (!hasSocialPhoto) {
+    additionalFields.push({
+      name: 'social_media_photo_url',
+      type: 'file',
+      label: 'Foto para redes sociales',
+      required: false,
+    });
   }
 
   return [...baseFields, ...additionalFields];

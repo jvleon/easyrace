@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { parseRegistrationConfig, type ParsedField } from '../utils/registrationConfigParser';
-import { uploadIdPhotoToCloudflare } from '../utils/cloudflare';
+import { uploadIdPhotoToCloudflare, uploadSocialPhotoToCloudflare, uploadPaymentProofToCloudflare } from '../utils/cloudflare';
 import { validateEmailNotTemporary } from '../utils/emailValidation';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader } from 'react-icons/fi';
 
@@ -9,12 +9,26 @@ interface Category {
   id: string;
   name: string;
   price: number | null;
-  gender: string | null; // 'male', 'female', or null (mixed)
+  gender: string | null; // 'male', 'female', 'mixed', or null (mixed)
   distance_id: string | null;
+  is_pair_category?: boolean; // Indica si es categoría de parejas
   event_distances: {
     id: string;
     name: string;
   } | null;
+  required_kit_ids?: string[] | null; // IDs de kits obligatorios para esta categoría
+}
+
+interface Kit {
+  id: string;
+  name: string;
+  price: number;
+  has_sizes: boolean;
+}
+
+interface KitSize {
+  id: string;
+  size: string; // La columna en la BD se llama 'size', no 'name'
 }
 
 interface Club {
@@ -65,6 +79,13 @@ export default function RegistrationModal({
   const [manualClubName, setManualClubName] = useState<string>('');
   const [selectedGender, setSelectedGender] = useState<string>(''); // 'male' o 'female'
   const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
+  const [kits, setKits] = useState<Kit[]>([]);
+  const [kitSizes, setKitSizes] = useState<KitSize[]>([]);
+  const [selectedKitId, setSelectedKitId] = useState<string>('');
+  const [selectedKitSizeId, setSelectedKitSizeId] = useState<string>('');
+  const [isPairCategory, setIsPairCategory] = useState<boolean>(false);
+  const [pairFormData, setPairFormData] = useState<Record<string, any>>({});
+  const [pairErrors, setPairErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (isOpen) {
@@ -103,6 +124,13 @@ export default function RegistrationModal({
       setManualClubName('');
       setSelectedGender('');
       setAcceptedTerms(false);
+      setSelectedKitId('');
+      setSelectedKitSizeId('');
+      setIsPairCategory(false);
+      setPairFormData({});
+      setPairErrors({});
+      setKits([]);
+      setKitSizes([]);
       loadCategories();
       loadClubs();
     }
@@ -137,6 +165,8 @@ export default function RegistrationModal({
           price,
           gender,
           distance_id,
+          is_pair_category,
+          required_kit_ids,
           event_distances (
             id,
             name
@@ -157,6 +187,131 @@ export default function RegistrationModal({
     }
   };
 
+  const loadKits = async (categoryId: string) => {
+    try {
+      setLoading(true);
+      console.log('[RegistrationModal] loadKits called for category:', categoryId);
+      
+      // Obtener la categoría seleccionada para verificar required_kit_ids
+      const selectedCategory = allCategories.find(cat => cat.id === categoryId);
+      console.log('[RegistrationModal] Selected category:', selectedCategory);
+      
+      const now = new Date().toISOString();
+      
+      // Cargar TODOS los kits activos del evento primero (incluyendo category_ids)
+      const { data: allKitsData, error: kitsError } = await supabase
+        .from('kits')
+        .select('id, name, price, description, image_url, sold_quantity, max_quantity, category_ids')
+        .eq('event_id', eventId)
+        .eq('is_active', true)
+        .or(`sale_deadline.is.null,sale_deadline.gte.${now}`)
+        .order('price', { ascending: true });
+
+      if (kitsError) {
+        console.error('[RegistrationModal] Error loading kits:', kitsError);
+        throw kitsError;
+      }
+
+      console.log('[RegistrationModal] All kits loaded:', allKitsData?.length || 0, allKitsData);
+
+      if (!allKitsData || allKitsData.length === 0) {
+        console.log('[RegistrationModal] No kits found for event');
+        setKits([]);
+        setKitSizes([]);
+        setLoading(false);
+        return;
+      }
+
+      // Filtrar kits según la categoría seleccionada
+      let filteredKits = allKitsData;
+      
+      // Si la categoría tiene required_kit_ids, solo mostrar esos kits
+      if (selectedCategory?.required_kit_ids && selectedCategory.required_kit_ids.length > 0) {
+        console.log('[RegistrationModal] Using required_kit_ids:', selectedCategory.required_kit_ids);
+        filteredKits = allKitsData.filter((kit: any) => 
+          selectedCategory.required_kit_ids.includes(kit.id)
+        );
+      } else {
+        // Si no, mostrar kits donde category_ids incluye esta categoría o está vacío/null/undefined
+        filteredKits = allKitsData.filter((kit: any) => {
+          // Si category_ids es null, undefined, o un array vacío, el kit está disponible para todas las categorías
+          if (!kit.category_ids || (Array.isArray(kit.category_ids) && kit.category_ids.length === 0)) {
+            return true;
+          }
+          // Si category_ids es un array, verificar si incluye la categoría seleccionada
+          if (Array.isArray(kit.category_ids)) {
+            return kit.category_ids.includes(categoryId);
+          }
+          return false;
+        });
+        console.log('[RegistrationModal] Filtered kits by category:', filteredKits.length);
+      }
+      
+      if (filteredKits.length === 0) {
+        console.log('[RegistrationModal] No kits available for this category');
+        setKits([]);
+        setKitSizes([]);
+        setLoading(false);
+        return;
+      }
+
+      // Verificar cuáles kits tienen tallas
+      const kitsWithSizes = await Promise.all(
+        filteredKits.map(async (kit: any) => {
+          const { data: sizesData } = await supabase
+            .from('kit_sizes')
+            .select('id')
+            .eq('kit_id', kit.id)
+            .limit(1);
+
+          return {
+            ...kit,
+            has_sizes: (sizesData?.length || 0) > 0,
+          } as Kit;
+        })
+      );
+
+      // Filtrar por disponibilidad (max_quantity)
+      const availableKits = kitsWithSizes.filter((kit) => {
+        const maxQuantity = kit.max_quantity !== null ? Number(kit.max_quantity) : null;
+        const soldQuantity = Number(kit.sold_quantity) || 0;
+        return maxQuantity === null || soldQuantity < maxQuantity;
+      });
+
+      console.log('[RegistrationModal] Available kits:', availableKits.length, availableKits);
+      setKits(availableKits);
+      
+      // Si hay un kit seleccionado, cargar sus tallas
+      if (selectedKitId) {
+        await loadKitSizes(selectedKitId);
+      } else {
+        setKitSizes([]);
+      }
+    } catch (error) {
+      console.error('[RegistrationModal] Error loading kits:', error);
+      setKits([]);
+      setKitSizes([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadKitSizes = async (kitId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('kit_sizes')
+        .select('id, size')
+        .eq('kit_id', kitId)
+        .order('size');
+
+      if (error) throw error;
+      setKitSizes(data || []);
+    } catch (error) {
+      console.error('Error loading kit sizes:', error);
+      setKitSizes([]);
+    }
+  };
+
   // Filtrar categorías según el género seleccionado
   useEffect(() => {
     if (!selectedGender) {
@@ -164,12 +319,41 @@ export default function RegistrationModal({
       return;
     }
 
-    // Mostrar categorías del género seleccionado + categorías mixtas (gender null)
+    // Mostrar categorías del género seleccionado + categorías mixtas (gender null o 'mixed')
     const filtered = allCategories.filter(
-      (cat) => cat.gender === selectedGender || cat.gender === null
+      (cat) => cat.gender === selectedGender || cat.gender === null || cat.gender === 'mixed'
     );
     setCategories(filtered);
   }, [selectedGender, allCategories]);
+
+  // Cargar kits cuando se selecciona una categoría
+  useEffect(() => {
+    if (formData.category_id) {
+      loadKits(formData.category_id);
+      // Limpiar kit seleccionado cuando cambia la categoría
+      setSelectedKitId('');
+      setSelectedKitSizeId('');
+      handleChange('kit_id', '');
+      // No guardar kit_size_id en formData
+    } else {
+      setKits([]);
+      setKitSizes([]);
+      setSelectedKitId('');
+      setSelectedKitSizeId('');
+    }
+  }, [formData.category_id]);
+
+  // Cargar tallas cuando se selecciona un kit
+  useEffect(() => {
+    if (selectedKitId) {
+      loadKitSizes(selectedKitId);
+      setSelectedKitSizeId('');
+      // No guardar kit_size_id en formData
+    } else {
+      setKitSizes([]);
+      setSelectedKitSizeId('');
+    }
+  }, [selectedKitId]);
 
   const loadClubs = async () => {
     try {
@@ -199,6 +383,95 @@ export default function RegistrationModal({
     }
   };
 
+  const handlePairChange = (name: string, value: any) => {
+    setPairFormData((prev) => ({ ...prev, [name]: value }));
+    if (pairErrors[`pair_${name}`]) {
+      setPairErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[`pair_${name}`];
+        return newErrors;
+      });
+    }
+  };
+
+  const validateEmailUnique = async (emailValue: string, isPairEmail: boolean = false) => {
+    if (!emailValue || !emailValue.trim()) {
+      return;
+    }
+
+    // Validar formato de email primero
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailValue)) {
+      return; // No validar si el formato no es válido
+    }
+
+    try {
+      // Si es email del segundo competidor en parejas, permitir que sea el mismo que el primero
+      if (isPairCategory && isPairEmail && formData.email) {
+        const firstEmail = formData.email.trim().toLowerCase();
+        const secondEmail = emailValue.trim().toLowerCase();
+        
+        // Si ambos emails son iguales, permitirlo (parejas pueden compartir email)
+        if (firstEmail === secondEmail) {
+          setPairErrors((prev) => {
+            const newErrors = { ...prev };
+            delete newErrors.pair_email;
+            return newErrors;
+          });
+          return;
+        }
+      }
+
+      // Consultar la vista para verificar si el email ya está registrado en este evento
+      const { data, error: checkError } = await supabase
+        .from('competitor_email_check')
+        .select('count')
+        .eq('event_id', eventId)
+        .eq('email', emailValue.trim().toLowerCase())
+        .maybeSingle();
+
+      if (checkError) {
+        // Si hay un error, no bloquear el registro, solo loguear
+        // El error 406 puede ocurrir si la vista no está disponible, pero no debe bloquear el registro
+        console.warn('Error checking email uniqueness (non-blocking):', checkError);
+        // Continuar sin validar email si hay error en la vista
+        return;
+      }
+
+      if (data && data.count > 0) {
+        if (isPairEmail) {
+          setPairErrors((prev) => ({
+            ...prev,
+            pair_email: 'Este correo electrónico ya está registrado en este evento por otra persona.',
+          }));
+        } else {
+          setErrors((prev) => ({
+            ...prev,
+            email: 'Este correo electrónico ya está registrado en este evento. Solo se permite un registro por correo.',
+          }));
+        }
+      } else {
+        // Limpiar error si el email no está registrado
+        if (isPairEmail) {
+          setPairErrors((prev) => {
+            const newErrors = { ...prev };
+            delete newErrors.pair_email;
+            return newErrors;
+          });
+        } else {
+          setErrors((prev) => {
+            const newErrors = { ...prev };
+            delete newErrors.email;
+            return newErrors;
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('Error validating email uniqueness:', err);
+      // No mostrar error al usuario si falla la validación, solo loguear
+    }
+  };
+
   const validatePhone = (phone: string): boolean => {
     // Remover espacios, guiones y paréntesis
     const cleaned = phone.replace(/[\s\-\(\)]/g, '');
@@ -213,15 +486,59 @@ export default function RegistrationModal({
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
+    console.log('[RegistrationModal] Starting validation...');
+    console.log('[RegistrationModal] isPairCategory:', isPairCategory);
+    console.log('[RegistrationModal] kits.length:', kits.length);
 
     // Validar género (siempre requerido)
     if (!selectedGender) {
       newErrors.gender = 'El género es requerido';
+      console.log('[RegistrationModal] Gender validation failed');
     }
 
     // Validar categoría (siempre requerida después de seleccionar género)
     if (selectedGender && !formData.category_id) {
       newErrors.category_id = 'La categoría es requerida';
+      console.log('[RegistrationModal] Category validation failed');
+    }
+
+    // Validar kit (solo si hay kits disponibles para esta categoría)
+    if (formData.category_id && kits.length > 0 && !selectedKitId) {
+      newErrors.kit_id = 'El kit es requerido';
+      console.log('[RegistrationModal] Kit validation failed - kits available but not selected');
+    }
+
+    // Validar talla si el kit tiene tallas
+    if (selectedKitId && kitSizes.length > 0 && !selectedKitSizeId) {
+      newErrors.kit_size_id = 'La talla es requerida';
+      console.log('[RegistrationModal] Kit size validation failed');
+    }
+
+    // Validar datos del segundo competidor si es categoría de parejas
+    if (isPairCategory) {
+      console.log('[RegistrationModal] Validating pair category data...');
+      const requiredPairFields = ['first_name', 'last_name', 'email'];
+      const newPairErrors: Record<string, string> = {};
+      requiredPairFields.forEach((fieldName) => {
+        if (!pairFormData[fieldName] || (typeof pairFormData[fieldName] === 'string' && pairFormData[fieldName].trim() === '')) {
+          newPairErrors[`pair_${fieldName}`] = `${fieldName === 'first_name' ? 'Nombre' : fieldName === 'last_name' ? 'Apellido' : 'Correo electrónico'} del segundo competidor es requerido`;
+        }
+      });
+
+      // Validar email del segundo competidor
+      if (pairFormData.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(pairFormData.email)) {
+          newPairErrors.pair_email = 'Correo electrónico inválido del segundo competidor';
+        } else if (!validateEmailNotTemporary(pairFormData.email)) {
+          newPairErrors.pair_email = 'No se permiten cuentas de email temporales para el segundo competidor';
+        }
+      }
+      setPairErrors(newPairErrors);
+      if (Object.keys(newPairErrors).length > 0) {
+        setErrors(newErrors);
+        return false;
+      }
     }
 
     fields.forEach((field) => {
@@ -277,8 +594,13 @@ export default function RegistrationModal({
       newErrors.terms = 'Debes aceptar los términos y condiciones para registrarte';
     }
 
+    console.log('[RegistrationModal] Validation errors:', newErrors);
+    console.log('[RegistrationModal] Kits available:', kits.length);
+    console.log('[RegistrationModal] Selected kit ID:', selectedKitId);
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const isValid = Object.keys(newErrors).length === 0;
+    console.log('[RegistrationModal] Is valid:', isValid);
+    return isValid;
   };
 
   const handleFileChange = async (name: string, file: File | null) => {
@@ -305,8 +627,16 @@ export default function RegistrationModal({
         return newErrors;
       });
 
-      // Subir a Cloudflare Images
-      const imageUrl = await uploadIdPhotoToCloudflare(file, eventSlug, eventId);
+      // Subir a Cloudflare Images según el tipo de campo
+      let imageUrl: string;
+      if (name === 'social_media_photo_url') {
+        imageUrl = await uploadSocialPhotoToCloudflare(file, eventSlug, eventId);
+      } else if (name === 'payment_proof_url') {
+        imageUrl = await uploadPaymentProofToCloudflare(file, eventSlug, eventId);
+      } else {
+        // Por defecto, usar uploadIdPhotoToCloudflare (para id_photo_url y otros)
+        imageUrl = await uploadIdPhotoToCloudflare(file, eventSlug, eventId);
+      }
       
       // Guardar la URL en el formulario
       handleChange(name, imageUrl);
@@ -345,6 +675,7 @@ export default function RegistrationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[RegistrationModal] handleSubmit called');
 
     // Verificar si se alcanzó el máximo antes de permitir el registro
     if (maxCompetitors !== null && maxCompetitors !== undefined && maxCompetitors > 0) {
@@ -355,7 +686,16 @@ export default function RegistrationModal({
       }
     }
 
-    if (!validateForm()) {
+    const isValid = validateForm();
+    console.log('[RegistrationModal] Form validation result:', isValid);
+    console.log('[RegistrationModal] Form data:', formData);
+    console.log('[RegistrationModal] Selected gender:', selectedGender);
+    console.log('[RegistrationModal] Selected category:', formData.category_id);
+    console.log('[RegistrationModal] Selected kit:', selectedKitId);
+    console.log('[RegistrationModal] Accepted terms:', acceptedTerms);
+    console.log('[RegistrationModal] Errors:', errors);
+    if (!isValid) {
+      console.log('[RegistrationModal] Form validation failed');
       return;
     }
 
@@ -368,10 +708,23 @@ export default function RegistrationModal({
         event_id: eventId,
         gender: selectedGender, // Asegurar que el género se guarde
         category_id: formData.category_id, // Asegurar que la categoría se guarde
+        kit_id: selectedKitId, // Asegurar que el kit se guarde
       };
 
-      // Agregar datos del formulario
+      // Agregar talla si el kit tiene tallas (usar el texto de la talla, no el ID)
+      if (selectedKitSizeId) {
+        const selectedSize = kitSizes.find(size => size.id === selectedKitSizeId);
+        if (selectedSize) {
+          competitorData.kit_size = selectedSize.size; // Usar 'kit_size' (texto) en lugar de 'kit_size_id'
+        }
+      }
+
+      // Agregar datos del formulario (excluir kit_size_id ya que no existe en la BD, usar kit_size en su lugar)
       Object.keys(formData).forEach((key) => {
+        // Excluir kit_size_id ya que no existe en la tabla competitors
+        if (key === 'kit_size_id') {
+          return;
+        }
         if (formData[key] !== null && formData[key] !== undefined && formData[key] !== '') {
           competitorData[key] = formData[key];
         }
@@ -400,9 +753,126 @@ export default function RegistrationModal({
         competitorData.emergency_contact_phone = formatPhone(competitorData.emergency_contact_phone);
       }
 
-      const { error } = await supabase.from('competitors').insert([competitorData]);
+      // Asegurar que kit_size_id no esté en competitorData (no existe en la BD)
+      delete competitorData.kit_size_id;
 
-      if (error) throw error;
+      let competitor1Id: string;
+      let competitor2Id: string | null = null;
+
+      // Insertar primer competidor
+      console.log('[RegistrationModal] Inserting competitor with data:', competitorData);
+      const { data: insertedData, error } = await supabase.from('competitors').insert([competitorData]).select();
+
+      if (error) {
+        console.error('[RegistrationModal] Error inserting competitor:', error);
+        throw error;
+      }
+      console.log('[RegistrationModal] Competitor inserted successfully:', insertedData);
+      competitor1Id = insertedData[0].id;
+
+      // Si es categoría de parejas, insertar segundo competidor
+      if (isPairCategory) {
+        const pairCompetitorData: Record<string, any> = {
+          event_id: eventId,
+          gender: selectedGender,
+          category_id: formData.category_id,
+          kit_id: selectedKitId,
+        };
+
+        // Agregar talla si el kit tiene tallas
+        if (selectedKitSizeId) {
+          const selectedSize = kitSizes.find(size => size.id === selectedKitSizeId);
+          if (selectedSize) {
+            pairCompetitorData.kit_size = selectedSize.size;
+          }
+        }
+
+        // Agregar datos del segundo competidor (excluir kit_size_id ya que no existe en la BD)
+        Object.keys(pairFormData).forEach((key) => {
+          // Excluir kit_size_id ya que no existe en la tabla competitors
+          if (key === 'kit_size_id') {
+            return;
+          }
+          if (pairFormData[key] !== null && pairFormData[key] !== undefined && pairFormData[key] !== '') {
+            pairCompetitorData[key] = pairFormData[key];
+          }
+        });
+
+        // Usar el mismo club del primer competidor
+        if (!clubNotInList && selectedClubId) {
+          if (selectedClubId === 'independent') {
+            pairCompetitorData.club = 'Independiente';
+            pairCompetitorData.club_id = null;
+          } else {
+            pairCompetitorData.club_id = selectedClubId;
+          }
+        } else if (clubNotInList && manualClubName.trim()) {
+          pairCompetitorData.club = manualClubName.trim();
+          pairCompetitorData.club_id = null;
+        }
+
+        // Formatear teléfonos del segundo competidor
+        if (pairCompetitorData.phone) {
+          pairCompetitorData.phone = formatPhone(pairCompetitorData.phone);
+        }
+        if (pairCompetitorData.emergency_contact_phone) {
+          pairCompetitorData.emergency_contact_phone = formatPhone(pairCompetitorData.emergency_contact_phone);
+        }
+
+        // Asegurar que kit_size_id no esté en pairCompetitorData (no existe en la BD)
+        delete pairCompetitorData.kit_size_id;
+
+        const { data: pairInsertedData, error: pairError } = await supabase
+          .from('competitors')
+          .insert([pairCompetitorData])
+          .select();
+
+        if (pairError) throw pairError;
+        competitor2Id = pairInsertedData[0].id;
+
+        // Crear relación de pareja
+        const { error: pairRelationError } = await supabase
+          .from('competitor_pairs')
+          .insert([{
+            event_id: eventId,
+            competitor_1_id: competitor1Id,
+            competitor_2_id: competitor2Id,
+          }]);
+
+        if (pairRelationError) throw pairRelationError;
+
+        // Incrementar sold_quantity del kit para el segundo competidor también
+        if (selectedKitId) {
+          const { data: kitData } = await supabase
+            .from('kits')
+            .select('sold_quantity')
+            .eq('id', selectedKitId)
+            .single();
+
+          if (kitData) {
+            await supabase
+              .from('kits')
+              .update({ sold_quantity: (kitData.sold_quantity || 0) + 1 })
+              .eq('id', selectedKitId);
+          }
+        }
+      }
+
+      // Incrementar sold_quantity del kit
+      if (selectedKitId && insertedData && insertedData.length > 0) {
+        const { data: kitData } = await supabase
+          .from('kits')
+          .select('sold_quantity')
+          .eq('id', selectedKitId)
+          .single();
+
+        if (kitData) {
+          await supabase
+            .from('kits')
+            .update({ sold_quantity: (kitData.sold_quantity || 0) + 1 })
+            .eq('id', selectedKitId);
+        }
+      }
 
       // Verificar si el evento es gratis
       const isFree = checkEventIsFree();
@@ -516,7 +986,14 @@ export default function RegistrationModal({
                     </label>
                     <select
                       value={formData.category_id || ''}
-                      onChange={(e) => handleChange('category_id', e.target.value)}
+                      onChange={(e) => {
+                        handleChange('category_id', e.target.value);
+                        // Limpiar kit seleccionado cuando cambia la categoría
+                        setSelectedKitId('');
+                        setSelectedKitSizeId('');
+                        handleChange('kit_id', '');
+                        // No guardar kit_size_id en formData
+                      }}
                       required
                       className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
                       style={{ backgroundColor: '#212121', color: '#FFF' }}
@@ -538,6 +1015,70 @@ export default function RegistrationModal({
                     )}
                     {categories.length === 0 && selectedGender && (
                       <p className="mt-1 text-sm text-white-pure/70">No hay categorías disponibles para este género</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Selector de kit - solo visible después de seleccionar categoría */}
+                {formData.category_id && kits.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="block text-white-pure text-sm font-medium mb-2">
+                      Kit <span className="text-red-fire ml-1">*</span>
+                    </label>
+                    <select
+                      value={selectedKitId}
+                      onChange={(e) => {
+                        setSelectedKitId(e.target.value);
+                        handleChange('kit_id', e.target.value);
+                        // Limpiar talla cuando cambia el kit
+                        setSelectedKitSizeId('');
+                        // No guardar kit_size_id en formData
+                      }}
+                      required
+                      className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                      style={{ backgroundColor: '#212121', color: '#FFF' }}
+                    >
+                      <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un kit</option>
+                      {kits.map((kit) => (
+                        <option key={kit.id} value={kit.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                          {kit.name} - ${Number(kit.price).toLocaleString('es-MX', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.kit_id && (
+                      <p className="mt-1 text-sm text-red-fire">{errors.kit_id}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Selector de talla - solo visible si el kit seleccionado tiene tallas */}
+                {selectedKitId && kitSizes.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="block text-white-pure text-sm font-medium mb-2">
+                      Talla <span className="text-red-fire ml-1">*</span>
+                    </label>
+                    <select
+                      value={selectedKitSizeId}
+                      onChange={(e) => {
+                        setSelectedKitSizeId(e.target.value);
+                        // No guardar kit_size_id en formData, solo mantenerlo en el estado selectedKitSizeId
+                      }}
+                      required
+                      className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                      style={{ backgroundColor: '#212121', color: '#FFF' }}
+                    >
+                      <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona una talla</option>
+                      {kitSizes.map((size) => (
+                        <option key={size.id} value={size.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                          {size.size}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.kit_size_id && (
+                      <p className="mt-1 text-sm text-red-fire">{errors.kit_size_id}</p>
                     )}
                   </div>
                 )}
@@ -732,6 +1273,110 @@ export default function RegistrationModal({
                 })}
               </div>
 
+              {/* Campos del segundo competidor (solo para categorías de parejas) */}
+              {isPairCategory && (
+                <div className="mt-8 pt-8 border-t border-white-pure/20">
+                  <h3 className="text-xl font-bold text-white-pure mb-6">
+                    Datos del Segundo Competidor
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-white-pure text-sm font-medium mb-2">
+                        Nombre <span className="text-red-fire ml-1">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={pairFormData.first_name || ''}
+                        onChange={(e) => handlePairChange('first_name', e.target.value)}
+                        required
+                        className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                      />
+                      {pairErrors.pair_first_name && (
+                        <p className="mt-1 text-sm text-red-fire">{pairErrors.pair_first_name}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-white-pure text-sm font-medium mb-2">
+                        Apellido <span className="text-red-fire ml-1">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={pairFormData.last_name || ''}
+                        onChange={(e) => handlePairChange('last_name', e.target.value)}
+                        required
+                        className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                      />
+                      {pairErrors.pair_last_name && (
+                        <p className="mt-1 text-sm text-red-fire">{pairErrors.pair_last_name}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-white-pure text-sm font-medium mb-2">
+                        Correo Electrónico <span className="text-red-fire ml-1">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={pairFormData.email || ''}
+                        onChange={(e) => handlePairChange('email', e.target.value)}
+                        onBlur={async (e) => {
+                          await validateEmailUnique(e.target.value, true);
+                        }}
+                        required
+                        className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                      />
+                      {pairErrors.pair_email && (
+                        <p className="mt-1 text-sm text-red-fire">{pairErrors.pair_email}</p>
+                      )}
+                    </div>
+
+                    {/* Renderizar otros campos opcionales del segundo competidor si están en la configuración */}
+                    {fields
+                      .filter(field => 
+                        !['first_name', 'last_name', 'email', 'gender', 'category_id', 'club_id', 'club'].includes(field.name) &&
+                        !field.required
+                      )
+                      .map((field) => {
+                        if (field.type === 'file') return null; // No incluir archivos para el segundo competidor
+                        return (
+                          <div key={`pair_${field.name}`}>
+                            <label className="block text-white-pure text-sm font-medium mb-2">
+                              {field.label} (Segundo competidor)
+                            </label>
+                            {field.type === 'textarea' ? (
+                              <textarea
+                                value={pairFormData[field.name] || ''}
+                                onChange={(e) => handlePairChange(field.name, e.target.value)}
+                                rows={4}
+                                className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
+                              />
+                            ) : (
+                              <input
+                                type={field.type}
+                                value={pairFormData[field.name] || ''}
+                                onChange={(e) => {
+                                  if (field.type === 'tel' || field.name === 'phone' || field.name === 'emergency_contact_phone') {
+                                    const value = e.target.value.replace(/\D/g, '');
+                                    if (value.length <= 10) {
+                                      handlePairChange(field.name, value);
+                                    }
+                                  } else {
+                                    handlePairChange(field.name, e.target.value);
+                                  }
+                                }}
+                                maxLength={field.type === 'tel' ? 10 : undefined}
+                                className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
               {/* Checkbox de Términos y Condiciones */}
               <div className="mt-6 mb-4">
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -896,6 +1541,12 @@ export default function RegistrationModal({
                 }
               } else {
                 handleChange(field.name, e.target.value);
+              }
+            }}
+            onBlur={async (e) => {
+              // Validar email único cuando pierde el foco
+              if (field.type === 'email' && field.name === 'email') {
+                await validateEmailUnique(e.target.value);
               }
             }}
             maxLength={field.type === 'tel' ? 10 : undefined}

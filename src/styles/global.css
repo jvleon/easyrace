@@ -89,5 +89,21 @@
   select::-ms-expand {
     display: none;
   }
+  
+  /* Estilos para bullets de categorías - visibles en fondo negro */
+  .category-list {
+    list-style-type: disc;
+    list-style-position: outside;
+  }
+  
+  .category-list li::marker {
+    color: #FF5722; /* Naranja para que sea visible en fondo negro */
+    font-size: 1.2em;
+  }
+  
+  /* Asegurar que los bullets sean visibles en todos los navegadores */
+  .category-list li {
+    color: #FFF;
+  }
 }
 

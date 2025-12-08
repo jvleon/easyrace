@@ -5,7 +5,10 @@ import { slateToHtml } from '../utils/slateToHtml';
 import { getBannerUrl } from '../utils/imageUrl';
 import RegistrationButton from './RegistrationButton';
 import Countdown from './Countdown';
-import { FiDownload } from 'react-icons/fi';
+import KitsSection from './KitsSection';
+import PaymentProofModal from './PaymentProofModal';
+import EventGallery from './EventGallery';
+import { FiDownload, FiUpload } from 'react-icons/fi';
 
 interface EventDetailProps {
   slug: string | undefined;
@@ -25,7 +28,7 @@ interface CategoryWithDistance {
   name: string;
   price: number | null;
   distance: string | null;
-  gender: string | null;
+  gender: string | null; // 'male', 'female', 'mixed', or null
   distance_id: string | null;
   event_distances: {
     id: string;
@@ -50,6 +53,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
   const [registeredCount, setRegisteredCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPaymentProofModalOpen, setIsPaymentProofModalOpen] = useState(false);
 
   useEffect(() => {
     // Siempre obtener el slug desde la URL del navegador para que funcione con eventos nuevos
@@ -89,21 +93,62 @@ export default function EventDetail({ slug }: EventDetailProps) {
 
         // Forzar re-render de los embeds después de cargar el script
         script.onload = () => {
-          // Esperar un poco para que el script se inicialice completamente
+          // Esperar a que el DOM se actualice completamente
           setTimeout(() => {
-            if (window.StravaEmbeds && typeof window.StravaEmbeds.load === 'function') {
-              window.StravaEmbeds.load();
+            if (typeof window !== 'undefined' && (window as any).StravaEmbeds) {
+              if (typeof (window as any).StravaEmbeds.load === 'function') {
+                (window as any).StravaEmbeds.load();
+              } else if (typeof (window as any).StravaEmbeds.init === 'function') {
+                (window as any).StravaEmbeds.init();
+              }
             }
-          }, 100);
+          }, 1000);
         };
       } else {
-        // Si el script ya está cargado, esperar un poco y forzar re-inicialización
+        // Si el script ya está cargado, esperar a que el DOM se actualice y forzar re-inicialización
         setTimeout(() => {
-          if (window.StravaEmbeds && typeof window.StravaEmbeds.load === 'function') {
-            window.StravaEmbeds.load();
+          if (typeof window !== 'undefined' && (window as any).StravaEmbeds) {
+            if (typeof (window as any).StravaEmbeds.load === 'function') {
+              (window as any).StravaEmbeds.load();
+            } else if (typeof (window as any).StravaEmbeds.init === 'function') {
+              (window as any).StravaEmbeds.init();
+            }
           }
-        }, 100);
+        }, 1000);
       }
+    }
+  }, [distanceGroups]);
+
+  // Efecto adicional para re-inicializar Strava cuando el contenido cambia
+  // Esto asegura que los embeds se inicialicen después de que React renderice el HTML
+  useEffect(() => {
+    if (distanceGroups.length > 0 && distanceGroups.some(g => g.stravaEmbed)) {
+      // Usar requestAnimationFrame para esperar a que React termine de renderizar
+      const frame1 = requestAnimationFrame(() => {
+        const frame2 = requestAnimationFrame(() => {
+          setTimeout(() => {
+            if (typeof window !== 'undefined') {
+              // Buscar todos los contenedores de Strava en el DOM
+              const stravaContainers = document.querySelectorAll('.strava-embed-container');
+              
+              if (stravaContainers.length > 0) {
+                // Si el script ya está cargado, inicializar
+                if ((window as any).StravaEmbeds) {
+                  if (typeof (window as any).StravaEmbeds.load === 'function') {
+                    (window as any).StravaEmbeds.load();
+                  } else if (typeof (window as any).StravaEmbeds.init === 'function') {
+                    (window as any).StravaEmbeds.init();
+                  }
+                }
+              }
+            }
+          }, 500);
+        });
+        
+        return () => cancelAnimationFrame(frame2);
+      });
+      
+      return () => cancelAnimationFrame(frame1);
     }
   }, [distanceGroups]);
 
@@ -358,7 +403,22 @@ export default function EventDetail({ slug }: EventDetailProps) {
                 Carta Responsiva
               </a>
             )}
+
+            <button
+              onClick={() => setIsPaymentProofModalOpen(true)}
+              className="w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg transition-colors bg-white-pure/10 hover:bg-white-pure/20 text-white-pure flex items-center justify-center gap-2"
+            >
+              <FiUpload className="h-5 w-5" />
+              Enviar Comprobante de Pago
+            </button>
           </div>
+
+          <PaymentProofModal
+            eventId={event.id}
+            eventSlug={event.slug}
+            isOpen={isPaymentProofModalOpen}
+            onClose={() => setIsPaymentProofModalOpen(false)}
+          />
 
           {event.page_description && (
             <div
@@ -374,6 +434,9 @@ export default function EventDetail({ slug }: EventDetailProps) {
               </p>
             </div>
           )}
+
+          {/* Sección de Kits */}
+          <KitsSection eventId={event.id} />
 
           {distanceGroups.length > 0 && (
             <section className="mb-12">
@@ -392,6 +455,23 @@ export default function EventDetail({ slug }: EventDetailProps) {
                       )}
                     </div>
 
+                    {/* Categorías primero - en formato de lista (bullets) */}
+                    {group.categories.length > 0 && (
+                      <div className="mb-6">
+                        <h4 className="text-lg font-semibold text-white-pure mb-3">
+                          Categorías
+                        </h4>
+                        <ul className="space-y-3 text-white-pure/90 ml-6 pl-2 list-disc list-outside category-list">
+                          {group.categories.map((category) => (
+                            <li key={category.id} className="font-medium text-white-pure">
+                              {category.name}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Strava embed después de las categorías */}
                     {group.stravaEmbed && (
                       <div className="w-full rounded-lg overflow-hidden border border-white-pure/20 bg-white-pure/5 p-4">
                         <h4 className="text-lg font-semibold text-white-pure mb-4">
@@ -400,46 +480,8 @@ export default function EventDetail({ slug }: EventDetailProps) {
                         <div
                           dangerouslySetInnerHTML={{ __html: group.stravaEmbed }}
                           className="strava-embed-container"
-                          key={`strava-${group.distanceId}`}
+                          data-strava-embed={group.distanceId || 'no-distance'}
                         />
-                      </div>
-                    )}
-
-                    {group.categories.length > 0 && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {group.categories.map((category) => (
-                          <div
-                            key={category.id}
-                            className="bg-white-pure/10 border border-white-pure/20 rounded-lg p-6 hover:bg-white-pure/15 transition-colors"
-                          >
-                            <h4 className="text-lg font-semibold text-white-pure mb-3">
-                              {category.name}
-                            </h4>
-                            <div className="space-y-2">
-                              {category.price !== null && category.price > 0 ? (
-                                <p className="text-white-pure/80">
-                                  <span className="font-medium">Precio:</span>{' '}
-                                  ${Number(category.price).toLocaleString('es-MX', {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}{' '}
-                                  {event.currency || 'MXN'}
-                                </p>
-                              ) : (
-                                <p className="text-orange-primary font-medium">Gratis</p>
-                              )}
-                              {category.gender && (
-                                <p className="text-white-pure/60 text-sm">
-                                  {category.gender === 'male'
-                                    ? 'Masculino'
-                                    : category.gender === 'female'
-                                      ? 'Femenino'
-                                      : 'Mixto'}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
                       </div>
                     )}
                   </div>
@@ -447,6 +489,9 @@ export default function EventDetail({ slug }: EventDetailProps) {
               </div>
             </section>
           )}
+
+          {/* Sección de Galería - Después de categorías */}
+          <EventGallery eventId={event.id} />
         </div>
       </div>
     </div>
