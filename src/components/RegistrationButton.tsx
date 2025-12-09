@@ -56,19 +56,6 @@ export default function RegistrationButton({
   const isDisabled = !registrationOpen || isMaxReached;
   const displayText = isMaxReached ? 'Sin lugares disponibles' : (registrationOpen ? buttonText : disabledText);
 
-  // Debug temporal - remover después
-  useEffect(() => {
-    if (maxCompetitorsNum !== null) {
-      console.log('[RegistrationButton] Debug:', {
-        maxCompetitors: maxCompetitorsNum,
-        registeredCount: registeredCountNum,
-        registeredCountRaw: registeredCount,
-        isMaxReached,
-        isDisabled,
-        registrationOpen
-      });
-    }
-  }, [maxCompetitorsNum, registeredCount, registeredCountNum, isMaxReached, isDisabled, registrationOpen]);
 
 
   useEffect(() => {

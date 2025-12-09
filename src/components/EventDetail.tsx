@@ -185,16 +185,9 @@ export default function EventDetail({ slug }: EventDetailProps) {
         event_id_param: eventData.id
       });
 
-      console.log('[EventDetail] Count function result:', {
-        count: countData,
-        countError,
-        eventId: eventData.id
-      });
-
       if (!countError && countData !== null && countData !== undefined) {
         const count = typeof countData === 'number' ? countData : parseInt(countData, 10) || 0;
         setRegisteredCount(count);
-        console.log('[EventDetail] Competidores registrados:', count, 'Max:', eventData.max_competitors);
       } else {
         console.error('[EventDetail] Error cargando conteo con función:', countError);
         // Fallback: intentar con consulta directa si la función falla
@@ -206,7 +199,6 @@ export default function EventDetail({ slug }: EventDetailProps) {
         if (!dataError && competitorsData) {
           const count = competitorsData.length;
           setRegisteredCount(count);
-          console.log('[EventDetail] Conteo fallback:', count);
         } else {
           setRegisteredCount(0);
         }

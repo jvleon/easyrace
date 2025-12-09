@@ -24,6 +24,7 @@ interface Kit {
   name: string;
   price: number;
   has_sizes: boolean;
+  is_pair_kit?: boolean; // Indica si el kit es para parejas
 }
 
 interface KitSize {
@@ -86,9 +87,23 @@ export default function RegistrationModal({
   const [isPairCategory, setIsPairCategory] = useState<boolean>(false);
   const [pairFormData, setPairFormData] = useState<Record<string, any>>({});
   const [pairErrors, setPairErrors] = useState<Record<string, string>>({});
+  
+  // Estados para flujo de pasos en categorías de parejas
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
+  const [competitor1Data, setCompetitor1Data] = useState<Record<string, any>>({});
+  const [competitor2Data, setCompetitor2Data] = useState<Record<string, any>>({});
+  const [showCategoryChangeWarning, setShowCategoryChangeWarning] = useState(false);
+  const [pendingCategoryChange, setPendingCategoryChange] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      // Resetear estados de pasos
+      setCurrentStep(1);
+      setCompetitor1Data({});
+      setCompetitor2Data({});
+      setShowCategoryChangeWarning(false);
+      setPendingCategoryChange(null);
+      
       const parsedFields = parseRegistrationConfig(registrationConfig);
       // Ordenar campos: mantener orden de campos base (first_name, last_name, email, club_id) y luego el resto
       // Separar campos base, campos de emergencia y otros campos
@@ -136,10 +151,31 @@ export default function RegistrationModal({
     }
   }, [isOpen, registrationConfig, eventId]);
 
+  // Verificar si hay datos en el formulario
+  const hasFormData = () => {
+    const hasData = Object.keys(formData).some(key => {
+      const value = formData[key];
+      return value !== null && value !== undefined && value !== '';
+    });
+    const hasSelection = selectedGender !== '' || selectedKitId !== '' || selectedClubId !== '' || manualClubName !== '';
+    return hasData || hasSelection;
+  };
+
+  // Manejar cierre del modal con confirmación si hay datos
+  const handleClose = () => {
+    if (hasFormData()) {
+      if (window.confirm('¿Estás seguro de que deseas cerrar? Se perderán los datos ingresados.')) {
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        onClose();
+        handleClose();
       }
     };
 
@@ -152,7 +188,25 @@ export default function RegistrationModal({
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, formData, selectedGender, selectedKitId, selectedClubId, manualClubName]);
+
+  // Prevenir cierre/recarga de página si hay datos en el formulario
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isOpen && hasFormData()) {
+        e.preventDefault();
+        e.returnValue = ''; // Chrome requiere esto
+      }
+    };
+
+    if (isOpen) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isOpen, formData, selectedGender, selectedKitId, selectedClubId, manualClubName]);
 
   const loadCategories = async () => {
     try {
@@ -190,18 +244,16 @@ export default function RegistrationModal({
   const loadKits = async (categoryId: string) => {
     try {
       setLoading(true);
-      console.log('[RegistrationModal] loadKits called for category:', categoryId);
       
       // Obtener la categoría seleccionada para verificar required_kit_ids
       const selectedCategory = allCategories.find(cat => cat.id === categoryId);
-      console.log('[RegistrationModal] Selected category:', selectedCategory);
       
       const now = new Date().toISOString();
       
-      // Cargar TODOS los kits activos del evento primero (incluyendo category_ids)
+      // Cargar TODOS los kits activos del evento primero (incluyendo category_ids e is_pair_kit)
       const { data: allKitsData, error: kitsError } = await supabase
         .from('kits')
-        .select('id, name, price, description, image_url, sold_quantity, max_quantity, category_ids')
+        .select('id, name, price, description, image_url, sold_quantity, max_quantity, category_ids, is_pair_kit')
         .eq('event_id', eventId)
         .eq('is_active', true)
         .or(`sale_deadline.is.null,sale_deadline.gte.${now}`)
@@ -212,10 +264,8 @@ export default function RegistrationModal({
         throw kitsError;
       }
 
-      console.log('[RegistrationModal] All kits loaded:', allKitsData?.length || 0, allKitsData);
 
       if (!allKitsData || allKitsData.length === 0) {
-        console.log('[RegistrationModal] No kits found for event');
         setKits([]);
         setKitSizes([]);
         setLoading(false);
@@ -225,15 +275,24 @@ export default function RegistrationModal({
       // Filtrar kits según la categoría seleccionada
       let filteredKits = allKitsData;
       
+      // Si es una categoría de parejas, solo mostrar kits de parejas
+      if (selectedCategory?.is_pair_category) {
+        filteredKits = allKitsData.filter((kit: any) => kit.is_pair_kit === true);
+      }
       // Si la categoría tiene required_kit_ids, solo mostrar esos kits
-      if (selectedCategory?.required_kit_ids && selectedCategory.required_kit_ids.length > 0) {
-        console.log('[RegistrationModal] Using required_kit_ids:', selectedCategory.required_kit_ids);
+      else if (selectedCategory?.required_kit_ids && selectedCategory.required_kit_ids.length > 0) {
         filteredKits = allKitsData.filter((kit: any) => 
           selectedCategory.required_kit_ids.includes(kit.id)
         );
       } else {
         // Si no, mostrar kits donde category_ids incluye esta categoría o está vacío/null/undefined
+        // PERO excluir kits de parejas si no es categoría de parejas
         filteredKits = allKitsData.filter((kit: any) => {
+          // Excluir kits de parejas si no es categoría de parejas
+          if (kit.is_pair_kit === true) {
+            return false;
+          }
+          
           // Si category_ids es null, undefined, o un array vacío, el kit está disponible para todas las categorías
           if (!kit.category_ids || (Array.isArray(kit.category_ids) && kit.category_ids.length === 0)) {
             return true;
@@ -244,11 +303,9 @@ export default function RegistrationModal({
           }
           return false;
         });
-        console.log('[RegistrationModal] Filtered kits by category:', filteredKits.length);
       }
       
       if (filteredKits.length === 0) {
-        console.log('[RegistrationModal] No kits available for this category');
         setKits([]);
         setKitSizes([]);
         setLoading(false);
@@ -278,7 +335,6 @@ export default function RegistrationModal({
         return maxQuantity === null || soldQuantity < maxQuantity;
       });
 
-      console.log('[RegistrationModal] Available kits:', availableKits.length, availableKits);
       setKits(availableKits);
       
       // Si hay un kit seleccionado, cargar sus tallas
@@ -329,6 +385,19 @@ export default function RegistrationModal({
   // Cargar kits cuando se selecciona una categoría
   useEffect(() => {
     if (formData.category_id) {
+      const selectedCat = allCategories.find(c => c.id === formData.category_id);
+      const wasPairCategory = isPairCategory;
+      const isNowPairCategory = selectedCat?.is_pair_category || false;
+      
+      // Detectar cambio de categoría de parejas a no parejas
+      if (wasPairCategory && !isNowPairCategory && currentStep === 1 && Object.keys(pairFormData).length > 0) {
+        // Mostrar advertencia si hay datos del competidor 2
+        setPendingCategoryChange(formData.category_id);
+        setShowCategoryChangeWarning(true);
+        return; // No aplicar el cambio todavía
+      }
+      
+      setIsPairCategory(isNowPairCategory);
       loadKits(formData.category_id);
       // Limpiar kit seleccionado cuando cambia la categoría
       setSelectedKitId('');
@@ -486,61 +555,77 @@ export default function RegistrationModal({
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    console.log('[RegistrationModal] Starting validation...');
-    console.log('[RegistrationModal] isPairCategory:', isPairCategory);
-    console.log('[RegistrationModal] kits.length:', kits.length);
 
-    // Validar género (siempre requerido)
-    if (!selectedGender) {
-      newErrors.gender = 'El género es requerido';
-      console.log('[RegistrationModal] Gender validation failed');
-    }
-
-    // Validar categoría (siempre requerida después de seleccionar género)
-    if (selectedGender && !formData.category_id) {
-      newErrors.category_id = 'La categoría es requerida';
-      console.log('[RegistrationModal] Category validation failed');
-    }
-
-    // Validar kit (solo si hay kits disponibles para esta categoría)
-    if (formData.category_id && kits.length > 0 && !selectedKitId) {
-      newErrors.kit_id = 'El kit es requerido';
-      console.log('[RegistrationModal] Kit validation failed - kits available but not selected');
-    }
-
-    // Validar talla solo si el kit seleccionado tiene tallas disponibles
-    if (selectedKitId) {
-      const selectedKit = kits.find(k => k.id === selectedKitId);
-      if (selectedKit?.has_sizes && !selectedKitSizeId) {
-        newErrors.kit_size_id = 'La talla es requerida';
-        console.log('[RegistrationModal] Kit size validation failed - kit has sizes but none selected');
-      }
-    }
-
-    // Validar datos del segundo competidor si es categoría de parejas
-    if (isPairCategory) {
-      console.log('[RegistrationModal] Validating pair category data...');
-      const requiredPairFields = ['first_name', 'last_name', 'email'];
-      const newPairErrors: Record<string, string> = {};
-      requiredPairFields.forEach((fieldName) => {
-        if (!pairFormData[fieldName] || (typeof pairFormData[fieldName] === 'string' && pairFormData[fieldName].trim() === '')) {
-          newPairErrors[`pair_${fieldName}`] = `${fieldName === 'first_name' ? 'Nombre' : fieldName === 'last_name' ? 'Apellido' : 'Correo electrónico'} del segundo competidor es requerido`;
-        }
-      });
-
-      // Validar email del segundo competidor
-      if (pairFormData.email) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(pairFormData.email)) {
-          newPairErrors.pair_email = 'Correo electrónico inválido del segundo competidor';
-        } else if (!validateEmailNotTemporary(pairFormData.email)) {
-          newPairErrors.pair_email = 'No se permiten cuentas de email temporales para el segundo competidor';
-        }
-      }
-      setPairErrors(newPairErrors);
-      if (Object.keys(newPairErrors).length > 0) {
+    // En paso 2, validar datos del competidor 2
+    if (isPairCategory && currentStep === 2) {
+      // Validar que tengamos datos del competidor 1
+      if (!competitor1Data || !competitor1Data.category_id) {
+        newErrors.general = 'Error: No se encontraron datos del Competidor 1';
         setErrors(newErrors);
         return false;
+      }
+      
+      // Validar talla del competidor 2 (puede ser diferente)
+      if (selectedKitId) {
+        const selectedKit = kits.find(k => k.id === selectedKitId);
+        if (selectedKit?.has_sizes && !selectedKitSizeId) {
+          newErrors.kit_size_id = 'La talla es requerida';
+        }
+      }
+      
+      // Validar club del competidor 2
+      if (fields.some((f) => f.name === 'club_id' || f.name === 'club')) {
+        if (!clubNotInList && !selectedClubId) {
+          const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
+          if (clubField?.required) {
+            newErrors.club = 'Debes seleccionar un equipo o marcar "Mi club no está en la lista"';
+          }
+        } else if (clubNotInList && !manualClubName.trim()) {
+          const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
+          if (clubField?.required) {
+            newErrors.club = 'Debes escribir el nombre del equipo';
+          }
+        }
+      }
+    } else {
+      // Validación normal para paso 1 o categorías no de parejas
+      
+      // Validar género (siempre requerido)
+      if (!selectedGender) {
+        newErrors.gender = 'El género es requerido';
+      }
+
+      // Validar categoría (siempre requerida después de seleccionar género)
+      if (selectedGender && !formData.category_id) {
+        newErrors.category_id = 'La categoría es requerida';
+      }
+
+      // Validar kit (solo si hay kits disponibles para esta categoría)
+      if (formData.category_id && kits.length > 0 && !selectedKitId) {
+        newErrors.kit_id = 'El kit es requerido';
+      }
+
+      // Validar talla solo si el kit seleccionado tiene tallas disponibles
+      if (selectedKitId) {
+        const selectedKit = kits.find(k => k.id === selectedKitId);
+        if (selectedKit?.has_sizes && !selectedKitSizeId) {
+          newErrors.kit_size_id = 'La talla es requerida';
+        }
+      }
+      
+      // Validar club
+      if (fields.some((f) => f.name === 'club_id' || f.name === 'club')) {
+        if (!clubNotInList && !selectedClubId) {
+          const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
+          if (clubField?.required) {
+            newErrors.club = 'Debes seleccionar un equipo o marcar "Mi club no está en la lista"';
+          }
+        } else if (clubNotInList && !manualClubName.trim()) {
+          const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
+          if (clubField?.required) {
+            newErrors.club = 'Debes escribir el nombre del equipo';
+          }
+        }
       }
     }
 
@@ -550,13 +635,17 @@ export default function RegistrationModal({
         return;
       }
 
-      if (field.required) {
+      // En paso 2 de parejas, el email NO es obligatorio para el competidor 2
+      const isEmailFieldInStep2 = isPairCategory && currentStep === 2 && field.name === 'email';
+      
+      if (field.required && !isEmailFieldInStep2) {
         const value = formData[field.name];
         if (!value || (typeof value === 'string' && value.trim() === '')) {
           newErrors[field.name] = `${field.label} es requerido`;
         }
       }
 
+      // Validar formato de email si se proporciona (obligatorio en paso 1, opcional en paso 2)
       if (field.type === 'email' && formData[field.name]) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(formData[field.name])) {
@@ -575,34 +664,13 @@ export default function RegistrationModal({
       }
     });
 
-    // Validar club
-    if (fields.some((f) => f.name === 'club_id' || f.name === 'club')) {
-      if (!clubNotInList && !selectedClubId) {
-        // Si el checkbox NO está marcado y no hay club seleccionado
-        const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
-        if (clubField?.required) {
-          newErrors.club = 'Debes seleccionar un equipo o marcar "Mi club no está en la lista"';
-        }
-      } else if (clubNotInList && !manualClubName.trim()) {
-        // Si el checkbox SÍ está marcado y el nombre manual está vacío
-        const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
-        if (clubField?.required) {
-          newErrors.club = 'Debes escribir el nombre del equipo';
-        }
-      }
-    }
-
     // Validar términos y condiciones
     if (!acceptedTerms) {
       newErrors.terms = 'Debes aceptar los términos y condiciones para registrarte';
     }
 
-    console.log('[RegistrationModal] Validation errors:', newErrors);
-    console.log('[RegistrationModal] Kits available:', kits.length);
-    console.log('[RegistrationModal] Selected kit ID:', selectedKitId);
     setErrors(newErrors);
     const isValid = Object.keys(newErrors).length === 0;
-    console.log('[RegistrationModal] Is valid:', isValid);
     return isValid;
   };
 
@@ -678,27 +746,91 @@ export default function RegistrationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('[RegistrationModal] handleSubmit called');
+    // Si es categoría de parejas y estamos en paso 1, guardar datos y avanzar al paso 2
+    if (isPairCategory && currentStep === 1) {
+      const isValid = validateForm();
+      if (!isValid) {
+        return;
+      }
+      
+      // Guardar datos del competidor 1
+      setCompetitor1Data({
+        ...formData,
+        gender: selectedGender,
+        category_id: formData.category_id,
+        kit_id: selectedKitId,
+        kit_size_id: selectedKitSizeId,
+        club_not_in_list: clubNotInList,
+        selected_club_id: selectedClubId,
+        manual_club_name: manualClubName,
+      });
+      
+      // Verificar si la categoría es mixta
+      const selectedCat = allCategories.find(c => c.id === formData.category_id);
+      const isMixedCategory = selectedCat?.gender === 'mixed' || selectedCat?.gender === null;
+      
+      // Verificar si hay datos guardados del Competidor 2 (en caso de volver al paso 1 y luego regresar)
+      if (competitor2Data && Object.keys(competitor2Data).length > 0) {
+        // Restaurar datos del Competidor 2
+        const { club_not_in_list, selected_club_id, manual_club_name, kit_size_id, gender, ...restData } = competitor2Data;
+        setFormData(restData);
+        setSelectedGender(gender || '');
+        setSelectedKitSizeId(kit_size_id || '');
+        setClubNotInList(club_not_in_list || false);
+        setSelectedClubId(selected_club_id || '');
+        setManualClubName(manual_club_name || '');
+      } else {
+        // Limpiar el formulario para el Competidor 2 (primera vez)
+        setFormData({
+          category_id: formData.category_id, // Mantener la categoría
+        });
+        
+        // Limpiar estados del formulario para Competidor 2
+        setClubNotInList(false);
+        setSelectedClubId('');
+        setManualClubName('');
+        setSelectedKitSizeId(''); // Cada competidor elige su propia talla
+        
+        // Mantener género si NO es mixta, limpiar si ES mixta
+        if (!isMixedCategory) {
+          setSelectedGender(selectedGender); // Mantener el mismo género
+        } else {
+          setSelectedGender(''); // Limpiar para que el usuario elija
+        }
+      }
+      
+      // Avanzar al paso 2
+      setCurrentStep(2);
+      setErrors({});
+      
+      // Hacer scroll suave hasta arriba del modal
+      setTimeout(() => {
+        const modalContent = document.getElementById('registration-modal-content');
+        if (modalContent) {
+          modalContent.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }, 100);
+      
+      return;
+    }
 
     // Verificar si se alcanzó el máximo antes de permitir el registro
     if (maxCompetitors !== null && maxCompetitors !== undefined && maxCompetitors > 0) {
       const currentCount = Number(registeredCount) || 0;
-      if (currentCount >= maxCompetitors) {
+      if (currentStep === 2 && isPairCategory) {
+        // Para parejas, verificar que haya espacio para 2 competidores
+        if (currentCount + 1 >= maxCompetitors) {
+          setSubmitError('Lo sentimos, no hay suficientes lugares disponibles para registrar la pareja.');
+          return;
+        }
+      } else if (currentCount >= maxCompetitors) {
         setSubmitError('Lo sentimos, el evento ha alcanzado el máximo de competidores registrados.');
         return;
       }
     }
 
     const isValid = validateForm();
-    console.log('[RegistrationModal] Form validation result:', isValid);
-    console.log('[RegistrationModal] Form data:', formData);
-    console.log('[RegistrationModal] Selected gender:', selectedGender);
-    console.log('[RegistrationModal] Selected category:', formData.category_id);
-    console.log('[RegistrationModal] Selected kit:', selectedKitId);
-    console.log('[RegistrationModal] Accepted terms:', acceptedTerms);
-    console.log('[RegistrationModal] Errors:', errors);
     if (!isValid) {
-      console.log('[RegistrationModal] Form validation failed');
       return;
     }
 
@@ -707,44 +839,54 @@ export default function RegistrationModal({
       setSubmitError(null);
 
       // Preparar datos del competidor
+      // Si estamos en paso 2, usar datos guardados del paso 1
+      const sourceData = (isPairCategory && currentStep === 2) ? competitor1Data : formData;
+      const sourceGender = (isPairCategory && currentStep === 2) ? competitor1Data.gender : selectedGender;
+      const sourceCategoryId = (isPairCategory && currentStep === 2) ? competitor1Data.category_id : formData.category_id;
+      const sourceKitId = (isPairCategory && currentStep === 2) ? competitor1Data.kit_id : selectedKitId;
+      const sourceKitSizeId = (isPairCategory && currentStep === 2) ? competitor1Data.kit_size_id : selectedKitSizeId;
+      const sourceClubNotInList = (isPairCategory && currentStep === 2) ? competitor1Data.club_not_in_list : clubNotInList;
+      const sourceSelectedClubId = (isPairCategory && currentStep === 2) ? competitor1Data.selected_club_id : selectedClubId;
+      const sourceManualClubName = (isPairCategory && currentStep === 2) ? competitor1Data.manual_club_name : manualClubName;
+      
       const competitorData: Record<string, any> = {
         event_id: eventId,
-        gender: selectedGender, // Asegurar que el género se guarde
-        category_id: formData.category_id, // Asegurar que la categoría se guarde
-        kit_id: selectedKitId, // Asegurar que el kit se guarde
+        gender: sourceGender, // Asegurar que el género se guarde
+        category_id: sourceCategoryId, // Asegurar que la categoría se guarde
+        kit_id: sourceKitId, // Asegurar que el kit se guarde
       };
 
       // Agregar talla si el kit tiene tallas (usar el texto de la talla, no el ID)
-      if (selectedKitSizeId) {
-        const selectedSize = kitSizes.find(size => size.id === selectedKitSizeId);
+      if (sourceKitSizeId) {
+        const selectedSize = kitSizes.find(size => size.id === sourceKitSizeId);
         if (selectedSize) {
           competitorData.kit_size = selectedSize.size; // Usar 'kit_size' (texto) en lugar de 'kit_size_id'
         }
       }
 
       // Agregar datos del formulario (excluir kit_size_id ya que no existe en la BD, usar kit_size en su lugar)
-      Object.keys(formData).forEach((key) => {
-        // Excluir kit_size_id ya que no existe en la tabla competitors
-        if (key === 'kit_size_id') {
+      Object.keys(sourceData).forEach((key) => {
+        // Excluir kit_size_id y campos de control ya que no existen en la tabla competitors
+        if (key === 'kit_size_id' || key === 'club_not_in_list' || key === 'selected_club_id' || key === 'manual_club_name') {
           return;
         }
-        if (formData[key] !== null && formData[key] !== undefined && formData[key] !== '') {
-          competitorData[key] = formData[key];
+        if (sourceData[key] !== null && sourceData[key] !== undefined && sourceData[key] !== '') {
+          competitorData[key] = sourceData[key];
         }
       });
 
       // Manejar club/equipo
-      if (!clubNotInList && selectedClubId) {
+      if (!sourceClubNotInList && sourceSelectedClubId) {
         // Si el checkbox NO está marcado, usar el select
-        if (selectedClubId === 'independent') {
+        if (sourceSelectedClubId === 'independent') {
           competitorData.club = 'Independiente';
           competitorData.club_id = null;
         } else {
-          competitorData.club_id = selectedClubId;
+          competitorData.club_id = sourceSelectedClubId;
         }
-      } else if (clubNotInList && manualClubName.trim()) {
+      } else if (sourceClubNotInList && sourceManualClubName && sourceManualClubName.trim()) {
         // Si el checkbox SÍ está marcado, usar el nombre manual
-        competitorData.club = manualClubName.trim();
+        competitorData.club = sourceManualClubName.trim();
         competitorData.club_id = null;
       }
 
@@ -763,7 +905,6 @@ export default function RegistrationModal({
       let competitor2Id: string | null = null;
 
       // Insertar primer competidor usando función RPC para evitar problemas de RLS
-      console.log('[RegistrationModal] Inserting competitor with data:', competitorData);
       const { data: insertedData, error } = await supabase.rpc('insert_competitor', {
         competitor_data: competitorData
       });
@@ -772,19 +913,18 @@ export default function RegistrationModal({
         console.error('[RegistrationModal] Error inserting competitor:', error);
         throw error;
       }
-      console.log('[RegistrationModal] Competitor inserted successfully:', insertedData);
       competitor1Id = insertedData.id;
 
-      // Si es categoría de parejas, insertar segundo competidor
-      if (isPairCategory) {
+      // Si es categoría de parejas y estamos en paso 2, insertar segundo competidor
+      if (isPairCategory && currentStep === 2) {
         const pairCompetitorData: Record<string, any> = {
           event_id: eventId,
-          gender: selectedGender,
-          category_id: formData.category_id,
-          kit_id: selectedKitId,
+          gender: selectedGender, // Puede ser diferente si la categoría es mixta
+          category_id: formData.category_id, // Misma categoría que competidor 1
+          kit_id: selectedKitId, // Mismo kit que competidor 1
         };
 
-        // Agregar talla si el kit tiene tallas
+        // Agregar talla del competidor 2 (puede ser diferente)
         if (selectedKitSizeId) {
           const selectedSize = kitSizes.find(size => size.id === selectedKitSizeId);
           if (selectedSize) {
@@ -792,18 +932,18 @@ export default function RegistrationModal({
           }
         }
 
-        // Agregar datos del segundo competidor (excluir kit_size_id ya que no existe en la BD)
-        Object.keys(pairFormData).forEach((key) => {
-          // Excluir kit_size_id ya que no existe en la tabla competitors
-          if (key === 'kit_size_id') {
+        // Agregar datos del segundo competidor desde formData (paso 2 - formData está limpio)
+        Object.keys(formData).forEach((key) => {
+          // Excluir campos de control
+          if (key === 'kit_size_id' || key === 'category_id') {
             return;
           }
-          if (pairFormData[key] !== null && pairFormData[key] !== undefined && pairFormData[key] !== '') {
-            pairCompetitorData[key] = pairFormData[key];
+          if (formData[key] !== null && formData[key] !== undefined && formData[key] !== '') {
+            pairCompetitorData[key] = formData[key];
           }
         });
 
-        // Usar el mismo club del primer competidor
+        // Manejar club/equipo del competidor 2 (independiente del competidor 1)
         if (!clubNotInList && selectedClubId) {
           if (selectedClubId === 'independent') {
             pairCompetitorData.club = 'Independiente';
@@ -891,15 +1031,7 @@ export default function RegistrationModal({
       }
 
       setSuccess(true);
-      setTimeout(() => {
-        onClose();
-        setSuccess(false);
-        setSuccessMessage('');
-        setFormData({});
-        setSelectedClubId('');
-        setManualClubName('');
-        setClubNotInList(false);
-      }, 5000);
+      // El usuario cerrará manualmente el modal
     } catch (error: any) {
       console.error('Error submitting registration:', error);
       setSubmitError(error.message || 'Error al registrar. Por favor, intenta de nuevo.');
@@ -919,33 +1051,60 @@ export default function RegistrationModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black-asphalt/80 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+      onClick={handleClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div
+        id="registration-modal-content"
         className="bg-black-asphalt border border-white-pure/20 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-black-asphalt border-b border-white-pure/20 p-6 flex justify-between items-center">
-          <h2 id="modal-title" className="text-2xl font-bold text-white-pure">Registro de Competidor</h2>
-          <button
-            onClick={onClose}
-            className="text-white-pure/70 hover:text-white-pure transition-colors"
-            aria-label="Cerrar"
-          >
-            <FiX size={24} />
-          </button>
+        <div className="sticky top-0 bg-black-asphalt border-b border-white-pure/20 p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 id="modal-title" className="text-2xl font-bold text-white-pure">
+              {isPairCategory 
+                ? `Registro de Competidor ${currentStep}` 
+                : 'Registro de Competidor'}
+            </h2>
+            <button
+              onClick={handleClose}
+              className="text-white-pure/70 hover:text-white-pure transition-colors"
+              aria-label="Cerrar"
+            >
+              <FiX size={24} />
+            </button>
+          </div>
+          
+          {/* Indicador de progreso para categorías de parejas */}
+          {isPairCategory && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-1">
+                <div className={`flex-1 h-2 rounded-full ${currentStep >= 1 ? 'bg-orange-primary' : 'bg-white-pure/20'}`} />
+                <div className={`flex-1 h-2 rounded-full ${currentStep >= 2 ? 'bg-orange-primary' : 'bg-white-pure/20'}`} />
+              </div>
+              <span className="text-white-pure/70 text-sm whitespace-nowrap">
+                Paso {currentStep} de 2
+              </span>
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="p-6">
           {success ? (
             <div className="text-center py-8">
               <FiCheckCircle className="mx-auto text-green-500 mb-4" size={48} />
-              <p className="text-white-pure text-lg font-semibold mb-2">
+              <p className="text-white-pure text-lg font-semibold mb-6">
                 {successMessage || '¡Registro exitoso!'}
               </p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-8 py-3 bg-orange-primary hover:bg-red-fire text-white-pure rounded-lg font-semibold transition-colors"
+              >
+                Cerrar
+              </button>
             </div>
           ) : (
             <>
@@ -957,64 +1116,106 @@ export default function RegistrationModal({
               )}
 
               <div className="space-y-4">
-                {/* Selector de género - siempre visible al inicio */}
+                {/* Selector de género - editable en paso 2 solo si categoría es mixta */}
                 <div className="space-y-2">
                   <label className="block text-white-pure text-sm font-medium mb-2">
                     Género <span className="text-red-fire ml-1">*</span>
                   </label>
-                  <select
-                    value={selectedGender}
-                    onChange={(e) => {
-                      setSelectedGender(e.target.value);
-                      handleChange('gender', e.target.value);
-                      // Limpiar categoría seleccionada cuando cambia el género
-                      handleChange('category_id', '');
-                    }}
-                    required
-                    className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                    style={{ backgroundColor: '#212121', color: '#FFF' }}
-                  >
-                    <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tu género</option>
-                    <option value="male" style={{ backgroundColor: '#212121', color: '#FFF' }}>Masculino</option>
-                    <option value="female" style={{ backgroundColor: '#212121', color: '#FFF' }}>Femenino</option>
-                  </select>
-                  {errors.gender && (
-                    <p className="mt-1 text-sm text-red-fire">{errors.gender}</p>
-                  )}
-                </div>
-
-                {/* Selector de categoría - solo visible después de seleccionar género */}
-                {selectedGender && (
-                  <div className="space-y-2">
-                    <label className="block text-white-pure text-sm font-medium mb-2">
-                      Categoría <span className="text-red-fire ml-1">*</span>
-                    </label>
+                  {isPairCategory && currentStep === 2 ? (
+                    <>
+                      {(() => {
+                        const selectedCat = allCategories.find(c => c.id === formData.category_id);
+                        const isMixedCategory = selectedCat?.gender === 'mixed' || selectedCat?.gender === null;
+                        
+                        if (isMixedCategory) {
+                          // Si es categoría mixta, permitir cambiar género
+                          return (
+                            <select
+                              value={selectedGender}
+                              onChange={(e) => {
+                                setSelectedGender(e.target.value);
+                                handleChange('gender', e.target.value);
+                              }}
+                              required
+                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              style={{ backgroundColor: '#212121', color: '#FFF' }}
+                            >
+                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tu género</option>
+                              <option value="male" style={{ backgroundColor: '#212121', color: '#FFF' }}>Masculino</option>
+                              <option value="female" style={{ backgroundColor: '#212121', color: '#FFF' }}>Femenino</option>
+                            </select>
+                          );
+                        } else {
+                          // Si no es mixta, bloqueado
+                          return (
+                            <div className="w-full px-4 py-2 bg-white-pure/5 border border-white-pure/20 rounded-lg text-white-pure/70">
+                              {selectedGender === 'male' ? 'Masculino' : 'Femenino'}
+                            </div>
+                          );
+                        }
+                      })()}
+                    </>
+                  ) : (
                     <select
-                      value={formData.category_id || ''}
+                      value={selectedGender}
                       onChange={(e) => {
-                        handleChange('category_id', e.target.value);
-                        // Limpiar kit seleccionado cuando cambia la categoría
-                        setSelectedKitId('');
-                        setSelectedKitSizeId('');
-                        handleChange('kit_id', '');
-                        // No guardar kit_size_id en formData
+                        setSelectedGender(e.target.value);
+                        handleChange('gender', e.target.value);
+                        // Limpiar categoría seleccionada cuando cambia el género
+                        handleChange('category_id', '');
                       }}
                       required
                       className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
                       style={{ backgroundColor: '#212121', color: '#FFF' }}
                     >
-                      <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona una categoría</option>
-                      {categories.map((cat) => {
-                        const distanceName = cat.event_distances?.name || '';
-                        const priceText = cat.price !== null && cat.price > 0 ? `- $${cat.price} ${eventPricing?.currency || 'MXN'}` : '';
-                        const displayText = [cat.name, distanceName, priceText].filter(Boolean).join(' ');
-                        return (
-                          <option key={cat.id} value={cat.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                            {displayText}
-                          </option>
-                        );
-                      })}
+                      <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tu género</option>
+                      <option value="male" style={{ backgroundColor: '#212121', color: '#FFF' }}>Masculino</option>
+                      <option value="female" style={{ backgroundColor: '#212121', color: '#FFF' }}>Femenino</option>
                     </select>
+                  )}
+                  {errors.gender && (
+                    <p className="mt-1 text-sm text-red-fire">{errors.gender}</p>
+                  )}
+                </div>
+
+                {/* Selector de categoría - bloqueado en paso 2 */}
+                {selectedGender && (
+                  <div className="space-y-2">
+                    <label className="block text-white-pure text-sm font-medium mb-2">
+                      Categoría <span className="text-red-fire ml-1">*</span>
+                    </label>
+                    {isPairCategory && currentStep === 2 ? (
+                      <div className="w-full px-4 py-2 bg-white-pure/5 border border-white-pure/20 rounded-lg text-white-pure/70">
+                        {categories.find(c => c.id === formData.category_id)?.name || 'Categoría seleccionada'}
+                      </div>
+                    ) : (
+                      <select
+                        value={formData.category_id || ''}
+                        onChange={(e) => {
+                          handleChange('category_id', e.target.value);
+                          // Limpiar kit seleccionado cuando cambia la categoría
+                          setSelectedKitId('');
+                          setSelectedKitSizeId('');
+                          handleChange('kit_id', '');
+                          // No guardar kit_size_id en formData
+                        }}
+                        required
+                        className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        style={{ backgroundColor: '#212121', color: '#FFF' }}
+                      >
+                        <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona una categoría</option>
+                        {categories.map((cat) => {
+                          const distanceName = cat.event_distances?.name || '';
+                          const priceText = cat.price !== null && cat.price > 0 ? `- $${cat.price} ${eventPricing?.currency || 'MXN'}` : '';
+                          const displayText = [cat.name, distanceName, priceText].filter(Boolean).join(' ');
+                          return (
+                            <option key={cat.id} value={cat.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                              {displayText}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
                     {errors.category_id && (
                       <p className="mt-1 text-sm text-red-fire">{errors.category_id}</p>
                     )}
@@ -1024,42 +1225,48 @@ export default function RegistrationModal({
                   </div>
                 )}
 
-                {/* Selector de kit - solo visible después de seleccionar categoría */}
+                {/* Selector de kit - bloqueado en paso 2 */}
                 {formData.category_id && kits.length > 0 && (
                   <div className="space-y-2">
                     <label className="block text-white-pure text-sm font-medium mb-2">
                       Kit <span className="text-red-fire ml-1">*</span>
                     </label>
-                    <select
-                      value={selectedKitId}
-                      onChange={(e) => {
-                        setSelectedKitId(e.target.value);
-                        handleChange('kit_id', e.target.value);
-                        // Limpiar talla cuando cambia el kit
-                        setSelectedKitSizeId('');
-                        // No guardar kit_size_id en formData
-                      }}
-                      required
-                      className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                      style={{ backgroundColor: '#212121', color: '#FFF' }}
-                    >
-                      <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un kit</option>
-                      {kits.map((kit) => (
-                        <option key={kit.id} value={kit.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                          {kit.name} - ${Number(kit.price).toLocaleString('es-MX', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </option>
-                      ))}
-                    </select>
+                    {isPairCategory && currentStep === 2 ? (
+                      <div className="w-full px-4 py-2 bg-white-pure/5 border border-white-pure/20 rounded-lg text-white-pure/70">
+                        {kits.find(k => k.id === selectedKitId)?.name || 'Kit seleccionado'}
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedKitId}
+                        onChange={(e) => {
+                          setSelectedKitId(e.target.value);
+                          handleChange('kit_id', e.target.value);
+                          // Limpiar talla cuando cambia el kit
+                          setSelectedKitSizeId('');
+                          // No guardar kit_size_id en formData
+                        }}
+                        required
+                        className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        style={{ backgroundColor: '#212121', color: '#FFF' }}
+                      >
+                        <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un kit</option>
+                        {kits.map((kit) => (
+                          <option key={kit.id} value={kit.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                            {kit.name} - ${Number(kit.price).toLocaleString('es-MX', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {errors.kit_id && (
                       <p className="mt-1 text-sm text-red-fire">{errors.kit_id}</p>
                     )}
                   </div>
                 )}
 
-                {/* Selector de talla - solo visible si el kit seleccionado tiene tallas */}
+                {/* Selector de talla - independiente para cada competidor */}
                 {selectedKitId && kitSizes.length > 0 && (
                   <div className="space-y-2">
                     <label className="block text-white-pure text-sm font-medium mb-2">
@@ -1069,7 +1276,7 @@ export default function RegistrationModal({
                       value={selectedKitSizeId}
                       onChange={(e) => {
                         setSelectedKitSizeId(e.target.value);
-                        // No guardar kit_size_id en formData, solo mantenerlo en el estado selectedKitSizeId
+                        // No guardar kit_size_id en formData, solo mantenerlo en el estado
                       }}
                       required
                       className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
@@ -1088,8 +1295,8 @@ export default function RegistrationModal({
                   </div>
                 )}
 
-                {/* Campos obligatorios */}
-                {requiredFields.length > 0 && (
+                {/* Campos obligatorios - Solo mostrar en paso 1 o si no es categoría de parejas */}
+                {requiredFields.length > 0 && !(isPairCategory && currentStep === 2) && (
                   <>
                     {requiredFields
                       .filter((field) => field.name !== 'gender' && field.name !== 'category_id') // Excluir gender y category_id ya que se manejan arriba
@@ -1187,8 +1394,8 @@ export default function RegistrationModal({
                   </>
                 )}
 
-                {/* Campos opcionales */}
-                {optionalFields
+                {/* Campos opcionales - Solo mostrar en paso 1 o si no es categoría de parejas */}
+                {!(isPairCategory && currentStep === 2) && optionalFields
                   .filter((field) => field.name !== 'gender' && field.name !== 'category_id') // Excluir gender y category_id
                   .map((field) => {
                   if (field.name === 'club_id' || field.name === 'club') {
@@ -1278,107 +1485,327 @@ export default function RegistrationModal({
                 })}
               </div>
 
-              {/* Campos del segundo competidor (solo para categorías de parejas) */}
-              {isPairCategory && (
-                <div className="mt-8 pt-8 border-t border-white-pure/20">
-                  <h3 className="text-xl font-bold text-white-pure mb-6">
-                    Datos del Segundo Competidor
-                  </h3>
+              {/* Campos del segundo competidor (solo para categorías de parejas en paso 2) */}
+              {isPairCategory && currentStep === 2 && (
+                <div className="space-y-4">
+                  <div className="pt-4 border-t border-white-pure/20">
+                    <h3 className="text-xl font-bold text-white-pure mb-6">
+                      Datos del Segundo Competidor
+                    </h3>
+                  </div>
                   
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-white-pure text-sm font-medium mb-2">
-                        Nombre <span className="text-red-fire ml-1">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={pairFormData.first_name || ''}
-                        onChange={(e) => handlePairChange('first_name', e.target.value)}
-                        required
-                        className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                      />
-                      {pairErrors.pair_first_name && (
-                        <p className="mt-1 text-sm text-red-fire">{pairErrors.pair_first_name}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-white-pure text-sm font-medium mb-2">
-                        Apellido <span className="text-red-fire ml-1">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={pairFormData.last_name || ''}
-                        onChange={(e) => handlePairChange('last_name', e.target.value)}
-                        required
-                        className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                      />
-                      {pairErrors.pair_last_name && (
-                        <p className="mt-1 text-sm text-red-fire">{pairErrors.pair_last_name}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-white-pure text-sm font-medium mb-2">
-                        Correo Electrónico <span className="text-red-fire ml-1">*</span>
-                      </label>
-                      <input
-                        type="email"
-                        value={pairFormData.email || ''}
-                        onChange={(e) => handlePairChange('email', e.target.value)}
-                        onBlur={async (e) => {
-                          await validateEmailUnique(e.target.value, true);
-                        }}
-                        required
-                        className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                      />
-                      {pairErrors.pair_email && (
-                        <p className="mt-1 text-sm text-red-fire">{pairErrors.pair_email}</p>
-                      )}
-                    </div>
-
-                    {/* Renderizar otros campos opcionales del segundo competidor si están en la configuración */}
-                    {fields
-                      .filter(field => 
-                        !['first_name', 'last_name', 'email', 'gender', 'category_id', 'club_id', 'club'].includes(field.name) &&
-                        !field.required
-                      )
-                      .map((field) => {
-                        if (field.type === 'file') return null; // No incluir archivos para el segundo competidor
+                  {/* Renderizar TODOS los campos para el competidor 2 */}
+                  {/* Primero los campos obligatorios */}
+                  {requiredFields
+                    .filter((field) => !['gender', 'category_id'].includes(field.name))
+                    .map((field) => {
+                      const isEmailField = field.name === 'email';
+                      const isClubField = field.name === 'club_id' || field.name === 'club';
+                      
+                      // Renderizado especial para el campo de club
+                      if (isClubField) {
                         return (
-                          <div key={`pair_${field.name}`}>
+                          <div key={`comp2_${field.name}`}>
                             <label className="block text-white-pure text-sm font-medium mb-2">
-                              {field.label} (Segundo competidor)
+                              {field.label}
+                              {field.required && <span className="text-red-fire ml-1">*</span>}
                             </label>
-                            {field.type === 'textarea' ? (
-                              <textarea
-                                value={pairFormData[field.name] || ''}
-                                onChange={(e) => handlePairChange(field.name, e.target.value)}
-                                rows={4}
-                                className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
-                              />
-                            ) : (
+                            
+                            <select
+                              value={selectedClubId}
+                              onChange={(e) => {
+                                setSelectedClubId(e.target.value);
+                                handleChange('club_id', e.target.value);
+                                handleChange('club', '');
+                              }}
+                              disabled={clubNotInList}
+                              required={field.required && !clubNotInList}
+                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ backgroundColor: '#212121', color: '#FFF' }}
+                            >
+                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
+                              <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
+                              {clubs.map((club) => (
+                                <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                  {club.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            <label className="flex items-center cursor-pointer mt-2">
                               <input
-                                type={field.type}
-                                value={pairFormData[field.name] || ''}
+                                type="checkbox"
+                                checked={clubNotInList}
                                 onChange={(e) => {
-                                  if (field.type === 'tel' || field.name === 'phone' || field.name === 'emergency_contact_phone') {
-                                    const value = e.target.value.replace(/\D/g, '');
-                                    if (value.length <= 10) {
-                                      handlePairChange(field.name, value);
-                                    }
+                                  const checked = e.target.checked;
+                                  setClubNotInList(checked);
+                                  setErrors((prev) => {
+                                    const newErrors = { ...prev };
+                                    delete newErrors.club;
+                                    return newErrors;
+                                  });
+                                  if (checked) {
+                                    setSelectedClubId('');
+                                    handleChange('club_id', '');
                                   } else {
-                                    handlePairChange(field.name, e.target.value);
+                                    setManualClubName('');
+                                    handleChange('club', '');
                                   }
                                 }}
-                                maxLength={field.type === 'tel' ? 10 : undefined}
-                                className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
                               />
+                              <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                            </label>
+
+                            {clubNotInList && (
+                              <input
+                                type="text"
+                                value={manualClubName}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setManualClubName(value);
+                                  handleChange('club', value);
+                                  handleChange('club_id', '');
+                                  if (errors.club) {
+                                    setErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      delete newErrors.club;
+                                      return newErrors;
+                                    });
+                                  }
+                                }}
+                                placeholder="Escribe el nombre del equipo"
+                                required={field.required && clubNotInList}
+                                className="mt-2 w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              />
+                            )}
+
+                            {errors.club && (
+                              <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
                             )}
                           </div>
                         );
-                      })}
-                  </div>
+                      }
+                      
+                      return (
+                        <div key={`comp2_${field.name}`}>
+                          <label className="block text-white-pure text-sm font-medium mb-2">
+                            {field.label}
+                            {/* Email NO es obligatorio para competidor 2 */}
+                            {field.required && !isEmailField && <span className="text-red-fire ml-1">*</span>}
+                          </label>
+                          {field.type === 'textarea' ? (
+                            <textarea
+                              value={formData[field.name] || ''}
+                              onChange={(e) => handleChange(field.name, e.target.value)}
+                              onBlur={async (e) => {
+                                if (isEmailField && e.target.value) {
+                                  await validateEmailUnique(e.target.value, true);
+                                }
+                              }}
+                              required={field.required && !isEmailField}
+                              rows={4}
+                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
+                            />
+                          ) : field.type === 'select' && field.name === 'blood_type' ? (
+                            <select
+                              value={formData[field.name] || ''}
+                              onChange={(e) => handleChange(field.name, e.target.value)}
+                              required={field.required}
+                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              style={{ backgroundColor: '#212121', color: '#FFF' }}
+                            >
+                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tipo de sangre</option>
+                              {field.options?.map((opt) => (
+                                <option key={opt.value} value={opt.value} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : field.type === 'file' ? (
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/jpg,image/png"
+                              onChange={(e) => handleFileChange(field.name, e.target.files?.[0] || null)}
+                              required={field.required}
+                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-primary file:text-white-pure hover:file:bg-red-fire"
+                            />
+                          ) : (
+                            <input
+                              type={field.type}
+                              value={formData[field.name] || ''}
+                              onChange={(e) => {
+                                if (field.type === 'tel' || field.name === 'phone' || field.name === 'emergency_contact_phone') {
+                                  const value = e.target.value.replace(/\D/g, '');
+                                  if (value.length <= 10) {
+                                    handleChange(field.name, value);
+                                  }
+                                } else {
+                                  handleChange(field.name, e.target.value);
+                                }
+                              }}
+                              onBlur={async (e) => {
+                                if (isEmailField && e.target.value) {
+                                  await validateEmailUnique(e.target.value, true);
+                                }
+                              }}
+                              maxLength={field.type === 'tel' ? 10 : undefined}
+                              required={field.required && !isEmailField}
+                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                            />
+                          )}
+                          {errors[field.name] && (
+                            <p className="mt-1 text-sm text-red-fire">{errors[field.name]}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  
+                  {/* Luego los campos opcionales */}
+                  {optionalFields
+                    .filter((field) => !['gender', 'category_id'].includes(field.name))
+                    .map((field) => {
+                      const isClubField = field.name === 'club_id' || field.name === 'club';
+                      
+                      // Renderizado especial para el campo de club
+                      if (isClubField) {
+                        return (
+                          <div key={`comp2_opt_${field.name}`}>
+                            <label className="block text-white-pure text-sm font-medium mb-2">
+                              {field.label}
+                            </label>
+                            
+                            <select
+                              value={selectedClubId}
+                              onChange={(e) => {
+                                setSelectedClubId(e.target.value);
+                                handleChange('club_id', e.target.value);
+                                handleChange('club', '');
+                              }}
+                              disabled={clubNotInList}
+                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                              style={{ backgroundColor: '#212121', color: '#FFF' }}
+                            >
+                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
+                              <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
+                              {clubs.map((club) => (
+                                <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                  {club.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            <label className="flex items-center cursor-pointer mt-2">
+                              <input
+                                type="checkbox"
+                                checked={clubNotInList}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setClubNotInList(checked);
+                                  setErrors((prev) => {
+                                    const newErrors = { ...prev };
+                                    delete newErrors.club;
+                                    return newErrors;
+                                  });
+                                  if (checked) {
+                                    setSelectedClubId('');
+                                    handleChange('club_id', '');
+                                  } else {
+                                    setManualClubName('');
+                                    handleChange('club', '');
+                                  }
+                                }}
+                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                              />
+                              <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                            </label>
+
+                            {clubNotInList && (
+                              <input
+                                type="text"
+                                value={manualClubName}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setManualClubName(value);
+                                  handleChange('club', value);
+                                  handleChange('club_id', '');
+                                  if (errors.club) {
+                                    setErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      delete newErrors.club;
+                                      return newErrors;
+                                    });
+                                  }
+                                }}
+                                placeholder="Escribe el nombre del equipo"
+                                className="mt-2 w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              />
+                            )}
+
+                            {errors.club && (
+                              <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
+                            )}
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div key={`comp2_opt_${field.name}`}>
+                          <label className="block text-white-pure text-sm font-medium mb-2">
+                            {field.label}
+                          </label>
+                          {field.type === 'textarea' ? (
+                          <textarea
+                            value={formData[field.name] || ''}
+                            onChange={(e) => handleChange(field.name, e.target.value)}
+                            rows={4}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
+                          />
+                        ) : field.type === 'select' && field.name === 'blood_type' ? (
+                          <select
+                            value={formData[field.name] || ''}
+                            onChange={(e) => handleChange(field.name, e.target.value)}
+                            className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                            style={{ backgroundColor: '#212121', color: '#FFF' }}
+                          >
+                            <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tipo de sangre</option>
+                            {field.options?.map((opt) => (
+                              <option key={opt.value} value={opt.value} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : field.type === 'file' ? (
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/jpg,image/png"
+                            onChange={(e) => handleFileChange(field.name, e.target.files?.[0] || null)}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-primary file:text-white-pure hover:file:bg-red-fire"
+                          />
+                        ) : (
+                          <input
+                            type={field.type}
+                            value={formData[field.name] || ''}
+                            onChange={(e) => {
+                              if (field.type === 'tel' || field.name === 'phone' || field.name === 'emergency_contact_phone') {
+                                const value = e.target.value.replace(/\D/g, '');
+                                if (value.length <= 10) {
+                                  handleChange(field.name, value);
+                                }
+                              } else {
+                                handleChange(field.name, e.target.value);
+                              }
+                            }}
+                            maxLength={field.type === 'tel' ? 10 : undefined}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                          />
+                        )}
+                        {errors[field.name] && (
+                          <p className="mt-1 text-sm text-red-fire">{errors[field.name]}</p>
+                        )}
+                      </div>
+                      );
+                    })}
                 </div>
               )}
 
@@ -1428,15 +1855,62 @@ export default function RegistrationModal({
                 )}
               </div>
 
-              <div className="mt-6 flex gap-4 justify-end">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-6 py-2 border border-white-pure/20 rounded-lg text-white-pure hover:bg-white-pure/10 transition-colors"
-                  disabled={submitting}
-                >
-                  Cancelar
-                </button>
+              <div className="mt-6 flex gap-4 justify-between">
+                <div className="flex gap-4">
+                  {/* Botón Volver - solo visible en paso 2 */}
+                  {isPairCategory && currentStep === 2 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Guardar datos del Competidor 2 antes de volver
+                        setCompetitor2Data({
+                          ...formData,
+                          gender: selectedGender,
+                          kit_size_id: selectedKitSizeId,
+                          club_not_in_list: clubNotInList,
+                          selected_club_id: selectedClubId,
+                          manual_club_name: manualClubName,
+                        });
+                        
+                        // Volver al paso 1 y cargar datos guardados del Competidor 1
+                        setCurrentStep(1);
+                        
+                        // Restaurar todos los datos del Competidor 1
+                        const { club_not_in_list, selected_club_id, manual_club_name, kit_size_id, gender, kit_id, ...restData } = competitor1Data;
+                        setFormData(restData);
+                        setSelectedGender(gender || '');
+                        setSelectedKitId(kit_id || '');
+                        setSelectedKitSizeId(kit_size_id || '');
+                        setClubNotInList(club_not_in_list || false);
+                        setSelectedClubId(selected_club_id || '');
+                        setManualClubName(manual_club_name || '');
+                        setErrors({});
+                        
+                        // Hacer scroll suave hasta arriba del modal
+                        setTimeout(() => {
+                          const modalContent = document.getElementById('registration-modal-content');
+                          if (modalContent) {
+                            modalContent.scrollTo({ top: 0, behavior: 'smooth' });
+                          }
+                        }, 100);
+                      }}
+                      className="px-6 py-2 border border-white-pure/20 rounded-lg text-white-pure hover:bg-white-pure/10 transition-colors"
+                      disabled={submitting}
+                    >
+                      Volver
+                    </button>
+                  )}
+                  
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    className="px-6 py-2 border border-white-pure/20 rounded-lg text-white-pure hover:bg-white-pure/10 transition-colors"
+                    disabled={submitting}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+                
                 <button
                   type="submit"
                   disabled={submitting || loading || !acceptedTerms}
@@ -1445,10 +1919,10 @@ export default function RegistrationModal({
                   {submitting ? (
                     <>
                       <FiLoader className="animate-spin" />
-                      Registrando...
+                      {isPairCategory && currentStep === 1 ? 'Guardando...' : 'Registrando...'}
                     </>
                   ) : (
-                    'Registrarse'
+                    isPairCategory && currentStep === 1 ? 'Siguiente' : 'Registrarse'
                   )}
                 </button>
               </div>
@@ -1456,6 +1930,60 @@ export default function RegistrationModal({
           )}
         </form>
       </div>
+      
+      {/* Modal de confirmación de cambio de categoría */}
+      {showCategoryChangeWarning && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black-asphalt/90 backdrop-blur-sm"
+          onClick={() => setShowCategoryChangeWarning(false)}
+        >
+          <div
+            className="bg-black-asphalt border border-white-pure/20 rounded-lg shadow-2xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-white-pure mb-4">Cambio de Categoría</h3>
+            <p className="text-white-pure/90 mb-6">
+              Si cambias a una categoría individual, se perderán los datos del Competidor 2 que hayas ingresado. ¿Deseas continuar?
+            </p>
+            <div className="flex gap-4 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCategoryChangeWarning(false);
+                  setPendingCategoryChange(null);
+                }}
+                className="px-6 py-2 border border-white-pure/20 rounded-lg text-white-pure hover:bg-white-pure/10 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Aplicar el cambio de categoría
+                  if (pendingCategoryChange) {
+                    const selectedCat = allCategories.find(c => c.id === pendingCategoryChange);
+                    setIsPairCategory(selectedCat?.is_pair_category || false);
+                    handleChange('category_id', pendingCategoryChange);
+                    loadKits(pendingCategoryChange);
+                    setSelectedKitId('');
+                    setSelectedKitSizeId('');
+                    handleChange('kit_id', '');
+                    // Limpiar datos del competidor 2
+                    setPairFormData({});
+                    setPairErrors({});
+                    setCurrentStep(1);
+                  }
+                  setShowCategoryChangeWarning(false);
+                  setPendingCategoryChange(null);
+                }}
+                className="px-6 py-2 bg-orange-primary hover:bg-red-fire text-white-pure rounded-lg font-semibold transition-colors"
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
