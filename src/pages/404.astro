@@ -12,6 +12,15 @@ import '../styles/global.css';
     <meta name="generator" content={Astro.generator} />
     <meta name="description" content="Página no encontrada - EasyRace" />
     <title>404 - Página no encontrada - EasyRace</title>
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-H98RYPYQCQ"></script>
+    <script is:inline>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-H98RYPYQCQ');
+    </script>
   </head>
   <body class="min-h-screen bg-black-asphalt flex flex-col">
     <Header />
