@@ -10,6 +10,7 @@ import PaymentProofModal from './PaymentProofModal';
 import EventGallery from './EventGallery';
 import EventNavigation from './EventNavigation';
 import { FiDownload, FiUpload, FiHome, FiInfo, FiPackage, FiList, FiImage } from 'react-icons/fi';
+import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa';
 
 interface EventDetailProps {
   slug: string | undefined;
@@ -168,7 +169,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
       // Cargar evento
       const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select('*')
+        .select('*, whatsapp_url, facebook_url, instagram_url')
         .eq('slug', currentSlug)
         .in('status', ['published', 'completed'])
         .single();
@@ -376,6 +377,45 @@ export default function EventDetail({ slug }: EventDetailProps) {
               <p className="text-white-pure/70 text-base mt-2">
                 Ubicación: {event.location}
               </p>
+            )}
+            
+            {/* Redes sociales del evento */}
+            {(event.facebook_url || event.instagram_url || event.whatsapp_url) && (
+              <div className="flex gap-4 mt-4">
+                {event.facebook_url && (
+                  <a
+                    href={event.facebook_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white-pure/70 hover:text-orange-primary transition-colors"
+                    aria-label="Facebook"
+                  >
+                    <FaFacebook size={28} />
+                  </a>
+                )}
+                {event.instagram_url && (
+                  <a
+                    href={event.instagram_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white-pure/70 hover:text-orange-primary transition-colors"
+                    aria-label="Instagram"
+                  >
+                    <FaInstagram size={28} />
+                  </a>
+                )}
+                {event.whatsapp_url && (
+                  <a
+                    href={event.whatsapp_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white-pure/70 hover:text-orange-primary transition-colors"
+                    aria-label="WhatsApp"
+                  >
+                    <FaWhatsapp size={28} />
+                  </a>
+                )}
+              </div>
             )}
           </header>
 
