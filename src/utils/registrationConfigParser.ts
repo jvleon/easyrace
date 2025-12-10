@@ -140,17 +140,6 @@ export function parseRegistrationConfig(
       });
   }
 
-  // Agregar foto social automáticamente como campo opcional (si no está ya presente)
-  const hasSocialPhoto = additionalFields.some(f => f.name === 'social_media_photo_url');
-  if (!hasSocialPhoto) {
-    additionalFields.push({
-      name: 'social_media_photo_url',
-      type: 'file',
-      label: 'Foto para redes sociales',
-      required: false,
-    });
-  }
-
   return [...baseFields, ...additionalFields];
 }
 

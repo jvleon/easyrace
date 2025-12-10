@@ -975,16 +975,27 @@ export default function RegistrationModal({
         if (pairError) throw pairError;
         competitor2Id = pairInsertedData.id;
 
-        // Crear relación de pareja
-        const { error: pairRelationError } = await supabase
+        // Crear relación de pareja y obtener el pair_id
+        const { data: pairData, error: pairRelationError } = await supabase
           .from('competitor_pairs')
           .insert([{
             event_id: eventId,
             competitor_1_id: competitor1Id,
             competitor_2_id: competitor2Id,
-          }]);
+            payment_confirmed: false,
+          }])
+          .select()
+          .single();
 
         if (pairRelationError) throw pairRelationError;
+
+        // ⚠️ PASO 4 CRÍTICO: Actualizar ambos competidores con el pair_id
+        const { error: updatePairIdError } = await supabase
+          .from('competitors')
+          .update({ pair_id: pairData.id })
+          .in('id', [competitor1Id, competitor2Id]);
+
+        if (updatePairIdError) throw updatePairIdError;
 
         // Incrementar sold_quantity del kit para el segundo competidor también
         if (selectedKitId) {

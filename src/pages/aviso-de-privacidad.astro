@@ -2,6 +2,12 @@
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import '../styles/global.css';
+
+const lastUpdate = new Date().toLocaleDateString('es-MX', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
 ---
 
 <html lang="es">
@@ -13,96 +19,93 @@ import '../styles/global.css';
     <meta name="description" content="Aviso de Privacidad de EasyRace" />
     <title>Aviso de Privacidad - EasyRace</title>
   </head>
-  <body class="min-h-screen bg-black-asphalt flex flex-col">
+  <body class="min-h-screen bg-black-asphalt flex flex-col font-sans">
     <Header />
-    <main class="container mx-auto px-4 py-8 md:py-12 flex-1">
+    <main class="container mx-auto px-4 py-12 flex-1">
       <div class="max-w-4xl mx-auto">
-        <h1 class="text-3xl md:text-4xl font-bold text-white-pure mb-8">
+        
+        <a href="/" class="inline-flex items-center gap-2 text-sm text-white-pure/60 hover:text-white-pure mb-8 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          Volver al inicio
+        </a>
+
+        <h1 class="text-3xl md:text-4xl font-bold text-white-pure mb-4">
           Aviso de Privacidad
         </h1>
-        <div class="prose prose-invert max-w-none text-white-pure/90">
-          <p class="text-white-pure/70 mb-6">
-            Última actualización: {new Date().toLocaleDateString('es-MX', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
+        
+        <p class="text-white-pure/60 text-sm mb-8 border-b border-white-pure/10 pb-6">
+          Última actualización: {lastUpdate}
+        </p>
+
+        <article class="prose prose-invert prose-lg max-w-none text-white-pure/90
+          prose-headings:text-white-pure prose-a:text-blue-400 hover:prose-a:text-blue-300">
+          
+          <p>
+            <strong>Coderbox Software Solutions</strong> (en adelante "El Responsable"), con domicilio en
+            Villahermosa, Tabasco, CP 86090, C. Zavala S/N, es el responsable del tratamiento de sus datos personales
+            que se recaban a través de la plataforma <strong>EasyRace</strong>.
           </p>
-          <p class="mb-4">
-            EasyRace, manejado por Coderbox Software Solutions, con domicilio en
-            Villahermosa, Tabasco, CP 86090, C. Zavala S/N, es responsable del
-            tratamiento de sus datos personales.
+
+          <p>
+            EasyRace actúa exclusivamente como una <strong>plataforma tecnológica de intermediación</strong> para el registro
+            de participantes en eventos deportivos de resistencia (ciclismo, running, entre otros).
           </p>
-          <h2 class="text-2xl font-bold text-white-pure mt-8 mb-4">
-            1. Datos Personales que Recopilamos
-          </h2>
-          <p class="mb-4">
-            Recopilamos los siguientes datos personales cuando se registra en
-            nuestros eventos:
-          </p>
-          <ul class="list-disc list-inside mb-4 space-y-2 ml-4">
-            <li>Nombre completo</li>
-            <li>Correo electrónico</li>
-            <li>Número de teléfono</li>
-            <li>Fecha de nacimiento</li>
-            <li>Género</li>
-            <li>Información de contacto de emergencia</li>
-            <li>Información médica relevante (alergias, tipo de sangre, etc.)</li>
-            <li>Fotografía de identificación</li>
+
+          <h2 class="text-2xl font-bold mt-8 mb-4">1. Datos Personales Recabados</h2>
+          <p>Para la gestión de su inscripción, recabamos:</p>
+          <ul class="list-disc pl-5 space-y-2">
+            <li>Datos de identificación: Nombre completo, fecha de nacimiento, género.</li>
+            <li>Datos de contacto: Correo electrónico, número de teléfono.</li>
+            <li>Datos sensibles (salud): Tipo de sangre, alergias y contacto de emergencia (utilizados exclusivamente por el Organizador del evento para fines de seguridad médica).</li>
+            <li><strong>Imágenes:</strong> Fotografía de identificación oficial y/o fotografía de perfil para redes sociales.</li>
           </ul>
-          <h2 class="text-2xl font-bold text-white-pure mt-8 mb-4">
-            2. Finalidad del Tratamiento
-          </h2>
-          <p class="mb-4">
-            Utilizamos sus datos personales para:
-          </p>
-          <ul class="list-disc list-inside mb-4 space-y-2 ml-4">
-            <li>Gestionar su registro en eventos deportivos</li>
-            <li>Comunicarnos con usted sobre los eventos</li>
-            <li>Proporcionar información de seguridad durante los eventos</li>
-            <li>Cumplir con obligaciones legales</li>
+
+          <h2 class="text-2xl font-bold mt-8 mb-4">2. Finalidades y Retención de Datos</h2>
+          <p>Sus datos serán utilizados para las siguientes finalidades necesarias para el servicio:</p>
+          <ul class="list-disc pl-5 space-y-2">
+            <li>Gestionar su registro en la base de datos del evento seleccionado.</li>
+            <li>Transferir su información al <strong>Organizador del Evento</strong>, quien es el encargado de la logística y ejecución del mismo.</li>
+            <li>Facilitar el envío de comprobantes de pago desde el usuario hacia el Organizador.</li>
           </ul>
-          <h2 class="text-2xl font-bold text-white-pure mt-8 mb-4">
-            3. Derechos ARCO
-          </h2>
-          <p class="mb-4">
-            Usted tiene derecho a:
-          </p>
-          <ul class="list-disc list-inside mb-4 space-y-2 ml-4">
-            <li><strong>Acceder</strong> a sus datos personales</li>
-            <li><strong>Rectificar</strong> datos inexactos o incompletos</li>
-            <li><strong>Cancelar</strong> el tratamiento de sus datos</li>
-            <li><strong>Oponerse</strong> al tratamiento de sus datos</li>
+
+          <div class="bg-white-pure/5 p-4 rounded-lg border-l-4 border-blue-500 my-6">
+            <h3 class="text-lg font-bold m-0 mb-2">Política de Eliminación de Imágenes</h3>
+            <p class="m-0 text-sm">
+              Las fotografías de identificación y fotografías para redes sociales cargadas a la plataforma 
+              <strong>serán eliminadas automáticamente de nuestros servidores 30 días naturales después 
+              de la fecha de finalización del evento</strong>. EasyRace no conserva estos archivos más allá de este periodo.
+            </p>
+          </div>
+
+          <h2 class="text-2xl font-bold mt-8 mb-4">3. Limitación de Responsabilidad y Pagos</h2>
+          <p>El usuario reconoce y acepta que:</p>
+          <ul class="list-disc pl-5 space-y-2">
+            <li><strong>EasyRace NO organiza eventos:</strong> La responsabilidad de la logística, seguridad, premiación y realización del evento recae exclusivamente en el Organizador del Evento, no en Coderbox Software Solutions.</li>
+            <li><strong>EasyRace NO procesa pagos:</strong> La plataforma funciona únicamente como un medio para adjuntar y enviar comprobantes de pago (capturas de pantalla, transferencias) al Organizador.</li>
+            <li><strong>Validación de Pagos:</strong> Coderbox Software Solutions no recibe fondos ni valida transacciones financieras. Es responsabilidad exclusiva del Organizador verificar la autenticidad del comprobante de pago recibido y confirmar la inscripción del usuario.</li>
           </ul>
-          <h2 class="text-2xl font-bold text-white-pure mt-8 mb-4">
-            4. Transferencia de Datos
-          </h2>
-          <p class="mb-4">
-            Sus datos personales pueden ser compartidos con organizadores de
-            eventos y autoridades competentes cuando sea necesario para la
-            realización del evento o por requerimiento legal.
+
+          <h2 class="text-2xl font-bold mt-8 mb-4">4. Transferencia de Datos</h2>
+          <p>
+            Sus datos personales serán transferidos a los <strong>Organizadores de los eventos</strong> en los que usted decida inscribirse.
+            Esta transferencia es necesaria para la existencia de la relación jurídica entre usted (el competidor) y el Organizador del evento.
           </p>
-          <h2 class="text-2xl font-bold text-white-pure mt-8 mb-4">
-            5. Seguridad
-          </h2>
-          <p class="mb-4">
-            Implementamos medidas de seguridad técnicas y administrativas para
-            proteger sus datos personales contra pérdida, alteración, destrucción
-            o uso no autorizado.
+
+          <h2 class="text-2xl font-bold mt-8 mb-4">5. Derechos ARCO y Contacto</h2>
+          <p>
+            Usted tiene derecho a conocer qué datos personales tenemos de usted, para qué los utilizamos y las condiciones del uso que les damos (Acceso).
+            Asimismo, es su derecho solicitar la corrección de su información personal (Rectificación); que la eliminemos de nuestros registros o bases de datos (Cancelación);
+            así como oponerse al uso de sus datos personales para fines específicos (Oposición).
           </p>
-          <h2 class="text-2xl font-bold text-white-pure mt-8 mb-4">
-            6. Contacto
-          </h2>
-          <p class="mb-4">
-            Para ejercer sus derechos ARCO o para cualquier consulta sobre el
-            tratamiento de sus datos personales, puede contactarnos a través de
-            nuestros canales oficiales de comunicación.
+          <p>
+            Para ejercer cualquiera de los derechos ARCO, favor de enviar una solicitud al correo electrónico:
+            <a href="mailto:contacto@coderbox.mx" class="text-blue-400 hover:text-blue-300">contacto@coderbox.mx</a>
+            o comunicarse al teléfono: +52 1 993 206 9861.
           </p>
-        </div>
+
+        </article>
       </div>
     </main>
     <Footer />
   </body>
 </html>
-
-
