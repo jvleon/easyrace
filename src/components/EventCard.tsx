@@ -1,4 +1,5 @@
 import { formatDateShort } from '../utils/dateFormatter';
+import { getBannerUrl } from '../utils/imageUrl';
 import { FiCalendar } from 'react-icons/fi';
 
 interface EventCardProps {
@@ -25,7 +26,7 @@ export default function EventCard({ name, slug, date, bannerUrl, mobileBannerUrl
             {/* Banner móvil (visible solo en pantallas ≤500px) */}
             {hasMobileBanner && (
               <img
-                src={mobileBannerUrl}
+                src={getBannerUrl(mobileBannerUrl, true)}
                 alt={name}
                 className="w-full h-full object-cover transition-transform duration-300 hover:scale-105 max-[500px]:block hidden"
                 loading="lazy"
@@ -34,7 +35,7 @@ export default function EventCard({ name, slug, date, bannerUrl, mobileBannerUrl
             {/* Banner desktop (visible en pantallas >500px o si no hay banner móvil) */}
             {hasBanner && (
               <img
-                src={bannerUrl}
+                src={getBannerUrl(bannerUrl, false)}
                 alt={name}
                 className={`w-full h-full object-cover transition-transform duration-300 hover:scale-105 ${hasMobileBanner ? 'max-[500px]:hidden block' : 'block'}`}
                 loading="lazy"

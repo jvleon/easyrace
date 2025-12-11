@@ -95,8 +95,8 @@ export default function EventsList() {
           name={event.name}
           slug={event.slug}
           date={event.date}
-          bannerUrl={getBannerUrl(event.banner_url)}
-          mobileBannerUrl={getBannerUrl(event.mobile_banner_url)}
+          bannerUrl={getBannerUrl(event.banner_url, false)}
+          mobileBannerUrl={getBannerUrl(event.mobile_banner_url, true)}
         />
       ))}
     </div>

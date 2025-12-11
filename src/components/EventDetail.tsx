@@ -327,7 +327,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
         <div className="w-full h-[400px] relative overflow-hidden bg-black-asphalt/30 m-0 p-0">
           {event.mobile_banner_url && (
             <img
-              src={getBannerUrl(event.mobile_banner_url)}
+              src={getBannerUrl(event.mobile_banner_url, true)}
               alt={event.name}
               className="w-full h-full object-cover object-center max-[500px]:block hidden"
               loading="eager"

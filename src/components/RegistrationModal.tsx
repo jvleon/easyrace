@@ -87,7 +87,7 @@ export default function RegistrationModal({
   const [isPairCategory, setIsPairCategory] = useState<boolean>(false);
   const [pairFormData, setPairFormData] = useState<Record<string, any>>({});
   const [pairErrors, setPairErrors] = useState<Record<string, string>>({});
-  
+
   // Estados para flujo de pasos en categorías de parejas
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [competitor1Data, setCompetitor1Data] = useState<Record<string, any>>({});
@@ -103,29 +103,29 @@ export default function RegistrationModal({
       setCompetitor2Data({});
       setShowCategoryChangeWarning(false);
       setPendingCategoryChange(null);
-      
+
       const parsedFields = parseRegistrationConfig(registrationConfig);
       // Ordenar campos: mantener orden de campos base (first_name, last_name, email, club_id) y luego el resto
       // Separar campos base, campos de emergencia y otros campos
       const baseFieldNames = ['first_name', 'last_name', 'email', 'club_id'];
       const emergencyFieldNames = ['emergency_contact_name', 'emergency_contact_phone'];
-      
+
       const baseFields = parsedFields.filter((f) => baseFieldNames.includes(f.name));
       const emergencyFields = parsedFields.filter((f) => emergencyFieldNames.includes(f.name));
       const otherFields = parsedFields.filter((f) => !baseFieldNames.includes(f.name) && !emergencyFieldNames.includes(f.name));
-      
+
       // Ordenar otros campos: obligatorios primero, opcionales después
       const sortedOtherFields = [
         ...otherFields.filter((f) => f.required),
         ...otherFields.filter((f) => !f.required),
       ];
-      
+
       // Ordenar campos de emergencia: obligatorios primero, opcionales después
       const sortedEmergencyFields = [
         ...emergencyFields.filter((f) => f.required),
         ...emergencyFields.filter((f) => !f.required),
       ];
-      
+
       // Combinar: campos base en orden + otros campos ordenados + campos de emergencia al final
       const sortedFields = [...baseFields, ...sortedOtherFields, ...sortedEmergencyFields];
       setFields(sortedFields);
@@ -244,12 +244,12 @@ export default function RegistrationModal({
   const loadKits = async (categoryId: string) => {
     try {
       setLoading(true);
-      
+
       // Obtener la categoría seleccionada para verificar required_kit_ids
       const selectedCategory = allCategories.find(cat => cat.id === categoryId);
-      
+
       const now = new Date().toISOString();
-      
+
       // Cargar TODOS los kits activos del evento primero (incluyendo category_ids e is_pair_kit)
       const { data: allKitsData, error: kitsError } = await supabase
         .from('kits')
@@ -274,14 +274,14 @@ export default function RegistrationModal({
 
       // Filtrar kits según la categoría seleccionada
       let filteredKits = allKitsData;
-      
+
       // Si es una categoría de parejas, solo mostrar kits de parejas
       if (selectedCategory?.is_pair_category) {
         filteredKits = allKitsData.filter((kit: any) => kit.is_pair_kit === true);
       }
       // Si la categoría tiene required_kit_ids, solo mostrar esos kits
       else if (selectedCategory?.required_kit_ids && selectedCategory.required_kit_ids.length > 0) {
-        filteredKits = allKitsData.filter((kit: any) => 
+        filteredKits = allKitsData.filter((kit: any) =>
           selectedCategory.required_kit_ids.includes(kit.id)
         );
       } else {
@@ -292,7 +292,7 @@ export default function RegistrationModal({
           if (kit.is_pair_kit === true) {
             return false;
           }
-          
+
           // Si category_ids es null, undefined, o un array vacío, el kit está disponible para todas las categorías
           if (!kit.category_ids || (Array.isArray(kit.category_ids) && kit.category_ids.length === 0)) {
             return true;
@@ -304,7 +304,7 @@ export default function RegistrationModal({
           return false;
         });
       }
-      
+
       if (filteredKits.length === 0) {
         setKits([]);
         setKitSizes([]);
@@ -336,7 +336,7 @@ export default function RegistrationModal({
       });
 
       setKits(availableKits);
-      
+
       // Si hay un kit seleccionado, cargar sus tallas
       if (selectedKitId) {
         await loadKitSizes(selectedKitId);
@@ -388,7 +388,7 @@ export default function RegistrationModal({
       const selectedCat = allCategories.find(c => c.id === formData.category_id);
       const wasPairCategory = isPairCategory;
       const isNowPairCategory = selectedCat?.is_pair_category || false;
-      
+
       // Detectar cambio de categoría de parejas a no parejas
       if (wasPairCategory && !isNowPairCategory && currentStep === 1 && Object.keys(pairFormData).length > 0) {
         // Mostrar advertencia si hay datos del competidor 2
@@ -396,7 +396,7 @@ export default function RegistrationModal({
         setShowCategoryChangeWarning(true);
         return; // No aplicar el cambio todavía
       }
-      
+
       setIsPairCategory(isNowPairCategory);
       loadKits(formData.category_id);
       // Limpiar kit seleccionado cuando cambia la categoría
@@ -479,7 +479,7 @@ export default function RegistrationModal({
       if (isPairCategory && isPairEmail && formData.email) {
         const firstEmail = formData.email.trim().toLowerCase();
         const secondEmail = emailValue.trim().toLowerCase();
-        
+
         // Si ambos emails son iguales, permitirlo (parejas pueden compartir email)
         if (firstEmail === secondEmail) {
           setPairErrors((prev) => {
@@ -564,7 +564,7 @@ export default function RegistrationModal({
         setErrors(newErrors);
         return false;
       }
-      
+
       // Validar talla del competidor 2 (puede ser diferente)
       if (selectedKitId) {
         const selectedKit = kits.find(k => k.id === selectedKitId);
@@ -572,7 +572,7 @@ export default function RegistrationModal({
           newErrors.kit_size_id = 'La talla es requerida';
         }
       }
-      
+
       // Validar club del competidor 2
       if (fields.some((f) => f.name === 'club_id' || f.name === 'club')) {
         if (!clubNotInList && !selectedClubId) {
@@ -589,7 +589,7 @@ export default function RegistrationModal({
       }
     } else {
       // Validación normal para paso 1 o categorías no de parejas
-      
+
       // Validar género (siempre requerido)
       if (!selectedGender) {
         newErrors.gender = 'El género es requerido';
@@ -612,7 +612,7 @@ export default function RegistrationModal({
           newErrors.kit_size_id = 'La talla es requerida';
         }
       }
-      
+
       // Validar club
       if (fields.some((f) => f.name === 'club_id' || f.name === 'club')) {
         if (!clubNotInList && !selectedClubId) {
@@ -637,7 +637,7 @@ export default function RegistrationModal({
 
       // En paso 2 de parejas, el email NO es obligatorio para el competidor 2
       const isEmailFieldInStep2 = isPairCategory && currentStep === 2 && field.name === 'email';
-      
+
       if (field.required && !isEmailFieldInStep2) {
         const value = formData[field.name];
         if (!value || (typeof value === 'string' && value.trim() === '')) {
@@ -708,7 +708,7 @@ export default function RegistrationModal({
         // Por defecto, usar uploadIdPhotoToCloudflare (para id_photo_url y otros)
         imageUrl = await uploadIdPhotoToCloudflare(file, eventSlug, eventId);
       }
-      
+
       // Guardar la URL en el formulario
       handleChange(name, imageUrl);
     } catch (error: any) {
@@ -724,23 +724,23 @@ export default function RegistrationModal({
 
   const checkEventIsFree = (): boolean => {
     if (!eventPricing) return false;
-    
+
     // Verificar precio general
     if (eventPricing.general_price !== null && eventPricing.general_price > 0) {
       return false;
     }
-    
+
     // Verificar precios de categorías
     // Si no hay categorías, considerar gratis si el precio general es 0 o null
     if (!eventPricing.categories || eventPricing.categories.length === 0) {
       return eventPricing.general_price === null || eventPricing.general_price === 0;
     }
-    
+
     // Verificar que todas las categorías sean gratis (precio null o 0)
     const hasPaidCategories = eventPricing.categories.some(
       (cat) => cat.price !== null && cat.price > 0
     );
-    
+
     return !hasPaidCategories;
   };
 
@@ -752,7 +752,7 @@ export default function RegistrationModal({
       if (!isValid) {
         return;
       }
-      
+
       // Guardar datos del competidor 1
       setCompetitor1Data({
         ...formData,
@@ -764,11 +764,11 @@ export default function RegistrationModal({
         selected_club_id: selectedClubId,
         manual_club_name: manualClubName,
       });
-      
+
       // Verificar si la categoría es mixta
       const selectedCat = allCategories.find(c => c.id === formData.category_id);
       const isMixedCategory = selectedCat?.gender === 'mixed' || selectedCat?.gender === null;
-      
+
       // Verificar si hay datos guardados del Competidor 2 (en caso de volver al paso 1 y luego regresar)
       if (competitor2Data && Object.keys(competitor2Data).length > 0) {
         // Restaurar datos del Competidor 2
@@ -784,13 +784,13 @@ export default function RegistrationModal({
         setFormData({
           category_id: formData.category_id, // Mantener la categoría
         });
-        
+
         // Limpiar estados del formulario para Competidor 2
         setClubNotInList(false);
         setSelectedClubId('');
         setManualClubName('');
         setSelectedKitSizeId(''); // Cada competidor elige su propia talla
-        
+
         // Mantener género si NO es mixta, limpiar si ES mixta
         if (!isMixedCategory) {
           setSelectedGender(selectedGender); // Mantener el mismo género
@@ -798,11 +798,11 @@ export default function RegistrationModal({
           setSelectedGender(''); // Limpiar para que el usuario elija
         }
       }
-      
+
       // Avanzar al paso 2
       setCurrentStep(2);
       setErrors({});
-      
+
       // Hacer scroll suave hasta arriba del modal
       setTimeout(() => {
         const modalContent = document.getElementById('registration-modal-content');
@@ -810,7 +810,7 @@ export default function RegistrationModal({
           modalContent.scrollTo({ top: 0, behavior: 'smooth' });
         }
       }, 100);
-      
+
       return;
     }
 
@@ -834,6 +834,7 @@ export default function RegistrationModal({
       return;
     }
 
+
     try {
       setSubmitting(true);
       setSubmitError(null);
@@ -848,7 +849,7 @@ export default function RegistrationModal({
       const sourceClubNotInList = (isPairCategory && currentStep === 2) ? competitor1Data.club_not_in_list : clubNotInList;
       const sourceSelectedClubId = (isPairCategory && currentStep === 2) ? competitor1Data.selected_club_id : selectedClubId;
       const sourceManualClubName = (isPairCategory && currentStep === 2) ? competitor1Data.manual_club_name : manualClubName;
-      
+
       const competitorData: Record<string, any> = {
         event_id: eventId,
         gender: sourceGender, // Asegurar que el género se guarde
@@ -1032,7 +1033,7 @@ export default function RegistrationModal({
 
       // Verificar si el evento es gratis
       const isFree = checkEventIsFree();
-      
+
       if (isFree) {
         setSuccessMessage('¡Registro exitoso! Te has registrado correctamente en el evento.');
       } else {
@@ -1075,8 +1076,8 @@ export default function RegistrationModal({
         <div className="sticky top-0 bg-black-asphalt border-b border-white-pure/20 p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 id="modal-title" className="text-2xl font-bold text-white-pure">
-              {isPairCategory 
-                ? `Registro de Competidor ${currentStep}` 
+              {isPairCategory
+                ? `Registro de Competidor ${currentStep}`
                 : 'Registro de Competidor'}
             </h2>
             <button
@@ -1087,7 +1088,7 @@ export default function RegistrationModal({
               <FiX size={24} />
             </button>
           </div>
-          
+
           {/* Indicador de progreso para categorías de parejas */}
           {isPairCategory && (
             <div className="flex items-center gap-2">
@@ -1137,7 +1138,7 @@ export default function RegistrationModal({
                       {(() => {
                         const selectedCat = allCategories.find(c => c.id === formData.category_id);
                         const isMixedCategory = selectedCat?.gender === 'mixed' || selectedCat?.gender === null;
-                        
+
                         if (isMixedCategory) {
                           // Si es categoría mixta, permitir cambiar género
                           return (
@@ -1312,96 +1313,96 @@ export default function RegistrationModal({
                     {requiredFields
                       .filter((field) => field.name !== 'gender' && field.name !== 'category_id') // Excluir gender y category_id ya que se manejan arriba
                       .map((field) => {
-                      if (field.name === 'club_id' || field.name === 'club') {
-                        return (
-                          <div key={field.name} className="space-y-2">
-                            <label className="block text-white-pure text-sm font-medium mb-2">
-                              {field.label}
-                              {field.required && <span className="text-red-fire ml-1">*</span>}
-                            </label>
-                            
-                            <select
-                              value={selectedClubId}
-                              onChange={(e) => {
-                                setSelectedClubId(e.target.value);
-                                handleChange('club_id', e.target.value);
-                                handleChange('club', '');
-                              }}
-                              disabled={clubNotInList}
-                              {...(field.required && !clubNotInList ? { required: true } : {})}
-                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                              style={{ backgroundColor: '#212121', color: '#FFF' }}
-                            >
-                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
-                              <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
-                              {clubs.map((club) => (
-                                <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                  {club.name}
-                                </option>
-                              ))}
-                            </select>
+                        if (field.name === 'club_id' || field.name === 'club') {
+                          return (
+                            <div key={field.name} className="space-y-2">
+                              <label className="block text-white-pure text-sm font-medium mb-2">
+                                {field.label}
+                                {field.required && <span className="text-red-fire ml-1">*</span>}
+                              </label>
 
-                            <label className="flex items-center cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={clubNotInList}
+                              <select
+                                value={selectedClubId}
                                 onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  setClubNotInList(checked);
-                                  // Limpiar errores de validación del club
-                                  setErrors((prev) => {
-                                    const newErrors = { ...prev };
-                                    delete newErrors.club;
-                                    return newErrors;
-                                  });
-                                  if (checked) {
-                                    // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
-                                    setSelectedClubId('');
-                                    handleChange('club_id', '');
-                                  } else {
-                                    // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
-                                    setManualClubName('');
-                                    handleChange('club', '');
-                                  }
+                                  setSelectedClubId(e.target.value);
+                                  handleChange('club_id', e.target.value);
+                                  handleChange('club', '');
                                 }}
-                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
-                              />
-                              <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
-                            </label>
+                                disabled={clubNotInList}
+                                {...(field.required && !clubNotInList ? { required: true } : {})}
+                                className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{ backgroundColor: '#212121', color: '#FFF' }}
+                              >
+                                <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
+                                <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
+                                {clubs.map((club) => (
+                                  <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                    {club.name}
+                                  </option>
+                                ))}
+                              </select>
 
-                            {clubNotInList && (
-                              <input
-                                type="text"
-                                value={manualClubName}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setManualClubName(value);
-                                  handleChange('club', value);
-                                  handleChange('club_id', '');
-                                  // Limpiar error de validación cuando el usuario escribe
-                                  if (errors.club) {
+                              <label className="flex items-center cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={clubNotInList}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setClubNotInList(checked);
+                                    // Limpiar errores de validación del club
                                     setErrors((prev) => {
                                       const newErrors = { ...prev };
                                       delete newErrors.club;
                                       return newErrors;
                                     });
-                                  }
-                                }}
-                                placeholder="Escribe el nombre del equipo"
-                                {...(field.required && clubNotInList ? { required: true } : {})}
-                                className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                              />
-                            )}
+                                    if (checked) {
+                                      // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
+                                      setSelectedClubId('');
+                                      handleChange('club_id', '');
+                                    } else {
+                                      // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
+                                      setManualClubName('');
+                                      handleChange('club', '');
+                                    }
+                                  }}
+                                  className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                                />
+                                <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                              </label>
 
-                            {errors.club && (
-                              <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
-                            )}
-                          </div>
-                        );
-                      }
+                              {clubNotInList && (
+                                <input
+                                  type="text"
+                                  value={manualClubName}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    setManualClubName(value);
+                                    handleChange('club', value);
+                                    handleChange('club_id', '');
+                                    // Limpiar error de validación cuando el usuario escribe
+                                    if (errors.club) {
+                                      setErrors((prev) => {
+                                        const newErrors = { ...prev };
+                                        delete newErrors.club;
+                                        return newErrors;
+                                      });
+                                    }
+                                  }}
+                                  placeholder="Escribe el nombre del equipo"
+                                  {...(field.required && clubNotInList ? { required: true } : {})}
+                                  className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                                />
+                              )}
 
-                      return renderField(field);
-                    })}
+                              {errors.club && (
+                                <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        return renderField(field);
+                      })}
                   </>
                 )}
 
@@ -1409,91 +1410,91 @@ export default function RegistrationModal({
                 {!(isPairCategory && currentStep === 2) && optionalFields
                   .filter((field) => field.name !== 'gender' && field.name !== 'category_id') // Excluir gender y category_id
                   .map((field) => {
-                  if (field.name === 'club_id' || field.name === 'club') {
-                    return (
-                      <div key={field.name} className="space-y-2">
-                        <label className="block text-white-pure text-sm font-medium mb-2">
-                          {field.label}
-                        </label>
-                        
-                        <select
-                          value={selectedClubId}
-                          onChange={(e) => {
-                            setSelectedClubId(e.target.value);
-                            handleChange('club_id', e.target.value);
-                            handleChange('club', '');
-                          }}
-                          disabled={clubNotInList}
-                          {...(field.required && !clubNotInList ? { required: true } : {})}
-                          className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                          style={{ backgroundColor: '#212121', color: '#FFF' }}
-                        >
-                          <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo (opcional)</option>
-                          <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
-                          {clubs.map((club) => (
-                            <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                              {club.name}
-                            </option>
-                          ))}
-                        </select>
+                    if (field.name === 'club_id' || field.name === 'club') {
+                      return (
+                        <div key={field.name} className="space-y-2">
+                          <label className="block text-white-pure text-sm font-medium mb-2">
+                            {field.label}
+                          </label>
 
-                        <label className="flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={clubNotInList}
+                          <select
+                            value={selectedClubId}
                             onChange={(e) => {
-                              const checked = e.target.checked;
-                              setClubNotInList(checked);
-                              // Limpiar errores de validación del club
-                              setErrors((prev) => {
-                                const newErrors = { ...prev };
-                                delete newErrors.club;
-                                return newErrors;
-                              });
-                              if (checked) {
-                                // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
-                                setSelectedClubId('');
-                                handleChange('club_id', '');
-                              } else {
-                                // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
-                                setManualClubName('');
-                                handleChange('club', '');
-                              }
+                              setSelectedClubId(e.target.value);
+                              handleChange('club_id', e.target.value);
+                              handleChange('club', '');
                             }}
-                            className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
-                          />
-                          <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
-                        </label>
+                            disabled={clubNotInList}
+                            {...(field.required && !clubNotInList ? { required: true } : {})}
+                            className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: '#212121', color: '#FFF' }}
+                          >
+                            <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo (opcional)</option>
+                            <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
+                            {clubs.map((club) => (
+                              <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                {club.name}
+                              </option>
+                            ))}
+                          </select>
 
-                        {clubNotInList && (
-                          <input
-                            type="text"
-                            value={manualClubName}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setManualClubName(value);
-                              handleChange('club', value);
-                              handleChange('club_id', '');
-                              // Limpiar error de validación cuando el usuario escribe
-                              if (errors.club) {
+                          <label className="flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={clubNotInList}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setClubNotInList(checked);
+                                // Limpiar errores de validación del club
                                 setErrors((prev) => {
                                   const newErrors = { ...prev };
                                   delete newErrors.club;
                                   return newErrors;
                                 });
-                              }
-                            }}
-                            placeholder="Escribe el nombre del equipo"
-                            {...(field.required && clubNotInList ? { required: true } : {})}
-                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                          />
-                        )}
-                      </div>
-                    );
-                  }
+                                if (checked) {
+                                  // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
+                                  setSelectedClubId('');
+                                  handleChange('club_id', '');
+                                } else {
+                                  // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
+                                  setManualClubName('');
+                                  handleChange('club', '');
+                                }
+                              }}
+                              className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                            />
+                            <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                          </label>
 
-                  return renderField(field);
-                })}
+                          {clubNotInList && (
+                            <input
+                              type="text"
+                              value={manualClubName}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setManualClubName(value);
+                                handleChange('club', value);
+                                handleChange('club_id', '');
+                                // Limpiar error de validación cuando el usuario escribe
+                                if (errors.club) {
+                                  setErrors((prev) => {
+                                    const newErrors = { ...prev };
+                                    delete newErrors.club;
+                                    return newErrors;
+                                  });
+                                }
+                              }}
+                              placeholder="Escribe el nombre del equipo"
+                              {...(field.required && clubNotInList ? { required: true } : {})}
+                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                            />
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return renderField(field);
+                  })}
               </div>
 
               {/* Campos del segundo competidor (solo para categorías de parejas en paso 2) */}
@@ -1504,7 +1505,7 @@ export default function RegistrationModal({
                       Datos del Segundo Competidor
                     </h3>
                   </div>
-                  
+
                   {/* Renderizar TODOS los campos para el competidor 2 */}
                   {/* Primero los campos obligatorios */}
                   {requiredFields
@@ -1512,7 +1513,7 @@ export default function RegistrationModal({
                     .map((field) => {
                       const isEmailField = field.name === 'email';
                       const isClubField = field.name === 'club_id' || field.name === 'club';
-                      
+
                       // Renderizado especial para el campo de club
                       if (isClubField) {
                         return (
@@ -1521,7 +1522,7 @@ export default function RegistrationModal({
                               {field.label}
                               {field.required && <span className="text-red-fire ml-1">*</span>}
                             </label>
-                            
+
                             <select
                               value={selectedClubId}
                               onChange={(e) => {
@@ -1597,7 +1598,7 @@ export default function RegistrationModal({
                           </div>
                         );
                       }
-                      
+
                       return (
                         <div key={`comp2_${field.name}`}>
                           <label className="block text-white-pure text-sm font-medium mb-2">
@@ -1671,13 +1672,13 @@ export default function RegistrationModal({
                         </div>
                       );
                     })}
-                  
+
                   {/* Luego los campos opcionales */}
                   {optionalFields
                     .filter((field) => !['gender', 'category_id'].includes(field.name))
                     .map((field) => {
                       const isClubField = field.name === 'club_id' || field.name === 'club';
-                      
+
                       // Renderizado especial para el campo de club
                       if (isClubField) {
                         return (
@@ -1685,7 +1686,7 @@ export default function RegistrationModal({
                             <label className="block text-white-pure text-sm font-medium mb-2">
                               {field.label}
                             </label>
-                            
+
                             <select
                               value={selectedClubId}
                               onChange={(e) => {
@@ -1759,66 +1760,67 @@ export default function RegistrationModal({
                           </div>
                         );
                       }
-                      
+
                       return (
                         <div key={`comp2_opt_${field.name}`}>
                           <label className="block text-white-pure text-sm font-medium mb-2">
                             {field.label}
                           </label>
                           {field.type === 'textarea' ? (
-                          <textarea
-                            value={formData[field.name] || ''}
-                            onChange={(e) => handleChange(field.name, e.target.value)}
-                            rows={4}
-                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
-                          />
-                        ) : field.type === 'select' && field.name === 'blood_type' ? (
-                          <select
-                            value={formData[field.name] || ''}
-                            onChange={(e) => handleChange(field.name, e.target.value)}
-                            className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                            style={{ backgroundColor: '#212121', color: '#FFF' }}
-                          >
-                            <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tipo de sangre</option>
-                            {field.options?.map((opt) => (
-                              <option key={opt.value} value={opt.value} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : field.type === 'file' ? (
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/jpg,image/png"
-                            onChange={(e) => handleFileChange(field.name, e.target.files?.[0] || null)}
-                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-primary file:text-white-pure hover:file:bg-red-fire"
-                          />
-                        ) : (
-                          <input
-                            type={field.type}
-                            value={formData[field.name] || ''}
-                            onChange={(e) => {
-                              if (field.type === 'tel' || field.name === 'phone' || field.name === 'emergency_contact_phone') {
-                                const value = e.target.value.replace(/\D/g, '');
-                                if (value.length <= 10) {
-                                  handleChange(field.name, value);
+                            <textarea
+                              value={formData[field.name] || ''}
+                              onChange={(e) => handleChange(field.name, e.target.value)}
+                              rows={4}
+                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
+                            />
+                          ) : field.type === 'select' && field.name === 'blood_type' ? (
+                            <select
+                              value={formData[field.name] || ''}
+                              onChange={(e) => handleChange(field.name, e.target.value)}
+                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              style={{ backgroundColor: '#212121', color: '#FFF' }}
+                            >
+                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tipo de sangre</option>
+                              {field.options?.map((opt) => (
+                                <option key={opt.value} value={opt.value} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : field.type === 'file' ? (
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/jpg,image/png"
+                              onChange={(e) => handleFileChange(field.name, e.target.files?.[0] || null)}
+                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-primary file:text-white-pure hover:file:bg-red-fire"
+                            />
+                          ) : (
+                            <input
+                              type={field.type}
+                              value={formData[field.name] || ''}
+                              onChange={(e) => {
+                                if (field.type === 'tel' || field.name === 'phone' || field.name === 'emergency_contact_phone') {
+                                  const value = e.target.value.replace(/\D/g, '');
+                                  if (value.length <= 10) {
+                                    handleChange(field.name, value);
+                                  }
+                                } else {
+                                  handleChange(field.name, e.target.value);
                                 }
-                              } else {
-                                handleChange(field.name, e.target.value);
-                              }
-                            }}
-                            maxLength={field.type === 'tel' ? 10 : undefined}
-                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                          />
-                        )}
-                        {errors[field.name] && (
-                          <p className="mt-1 text-sm text-red-fire">{errors[field.name]}</p>
-                        )}
-                      </div>
+                              }}
+                              maxLength={field.type === 'tel' ? 10 : undefined}
+                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                            />
+                          )}
+                          {errors[field.name] && (
+                            <p className="mt-1 text-sm text-red-fire">{errors[field.name]}</p>
+                          )}
+                        </div>
                       );
                     })}
                 </div>
               )}
+
 
               {/* Checkbox de Términos y Condiciones */}
               <div className="mt-6 mb-4">
@@ -1882,10 +1884,10 @@ export default function RegistrationModal({
                           selected_club_id: selectedClubId,
                           manual_club_name: manualClubName,
                         });
-                        
+
                         // Volver al paso 1 y cargar datos guardados del Competidor 1
                         setCurrentStep(1);
-                        
+
                         // Restaurar todos los datos del Competidor 1
                         const { club_not_in_list, selected_club_id, manual_club_name, kit_size_id, gender, kit_id, ...restData } = competitor1Data;
                         setFormData(restData);
@@ -1896,7 +1898,7 @@ export default function RegistrationModal({
                         setSelectedClubId(selected_club_id || '');
                         setManualClubName(manual_club_name || '');
                         setErrors({});
-                        
+
                         // Hacer scroll suave hasta arriba del modal
                         setTimeout(() => {
                           const modalContent = document.getElementById('registration-modal-content');
@@ -1911,7 +1913,7 @@ export default function RegistrationModal({
                       Volver
                     </button>
                   )}
-                  
+
                   <button
                     type="button"
                     onClick={handleClose}
@@ -1921,7 +1923,7 @@ export default function RegistrationModal({
                     Cancelar
                   </button>
                 </div>
-                
+
                 <button
                   type="submit"
                   disabled={submitting || loading || !acceptedTerms}
@@ -1941,7 +1943,7 @@ export default function RegistrationModal({
           )}
         </form>
       </div>
-      
+
       {/* Modal de confirmación de cambio de categoría */}
       {showCategoryChangeWarning && (
         <div
