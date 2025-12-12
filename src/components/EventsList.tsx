@@ -10,6 +10,7 @@ interface Event {
   date: string;
   banner_url: string | null;
   mobile_banner_url: string | null;
+  location: string | null;
   status: string;
 }
 
@@ -29,7 +30,7 @@ export default function EventsList() {
 
       const { data, error: queryError } = await supabase
         .from('events')
-        .select('id, name, slug, date, banner_url, mobile_banner_url, status')
+        .select('id, name, slug, date, banner_url, mobile_banner_url, location, status')
         .in('status', ['published', 'completed'])
         .not('name', 'is', null)
         .not('date', 'is', null)
@@ -95,6 +96,7 @@ export default function EventsList() {
           name={event.name}
           slug={event.slug}
           date={event.date}
+          location={event.location}
           bannerUrl={getBannerUrl(event.banner_url, false)}
           mobileBannerUrl={getBannerUrl(event.mobile_banner_url, true)}
         />

@@ -1,17 +1,18 @@
 import { formatDateShort } from '../utils/dateFormatter';
 import { getBannerUrl } from '../utils/imageUrl';
-import { FiCalendar } from 'react-icons/fi';
+import { FiCalendar, FiMapPin } from 'react-icons/fi';
 
 interface EventCardProps {
   id: string;
   name: string;
   slug: string;
   date: string;
+  location: string | null;
   bannerUrl: string | null;
   mobileBannerUrl?: string | null;
 }
 
-export default function EventCard({ name, slug, date, bannerUrl, mobileBannerUrl }: EventCardProps) {
+export default function EventCard({ name, slug, date, location, bannerUrl, mobileBannerUrl }: EventCardProps) {
   const hasMobileBanner = mobileBannerUrl && mobileBannerUrl.trim() !== '';
   const hasBanner = bannerUrl && bannerUrl.trim() !== '';
   
@@ -49,9 +50,17 @@ export default function EventCard({ name, slug, date, bannerUrl, mobileBannerUrl
       </div>
       <div className="p-4">
         <h3 className="text-xl font-bold text-white-pure mb-2 line-clamp-2">{name}</h3>
-        <div className="flex items-center text-white-pure/70 text-sm">
-          <FiCalendar className="mr-2" />
-          <span>{formatDateShort(date)}</span>
+        <div className="space-y-1">
+          <div className="flex items-center text-white-pure/70 text-sm">
+            <FiCalendar className="mr-2" />
+            <span>{formatDateShort(date)}</span>
+          </div>
+          {location && (
+            <div className="flex items-center text-white-pure/70 text-sm">
+              <FiMapPin className="mr-2" />
+              <span className="line-clamp-1">{location}</span>
+            </div>
+          )}
         </div>
       </div>
     </a>
