@@ -1,15 +1,25 @@
 import { supabase } from '../lib/supabase';
 
 /**
- * Genera un ID aleatorio de 7 caracteres alfanuméricos
+ * Normaliza el slug del evento según el estándar
+ * Convierte el nombre del evento a formato URL-friendly (máximo 50 caracteres)
+ * @param eventName - Nombre del evento o slug existente
+ * @returns Slug normalizado
+ */
+function normalizeEventSlug(eventName: string): string {
+  return eventName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')  // Reemplazar caracteres especiales con guiones
+    .replace(/^-+|-+$/g, '')      // Eliminar guiones al inicio/final
+    .substring(0, 50);             // Limitar a 50 caracteres
+}
+
+/**
+ * Genera un ID aleatorio de 13 caracteres usando base36
+ * Formato según estándar: Math.random().toString(36).substring(2, 15)
  */
 function generateRandomId(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < 7; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  return Math.random().toString(36).substring(2, 15);
 }
 
 /**
@@ -162,9 +172,12 @@ export async function uploadIdPhotoToCloudflare(
     throw new Error(validation.error);
   }
 
+  // Normalizar el slug del evento según el estándar
+  const normalizedSlug = normalizeEventSlug(eventSlug);
+
   // Generar custom ID con el formato: identificacion-boletera-{event-slug}-{random-id}
   const randomId = generateRandomId();
-  const customId = `identificacion-boletera-${eventSlug}-${randomId}`;
+  const customId = `identificacion-boletera-${normalizedSlug}-${randomId}`;
 
   try {
     // 1. Obtener URL de direct upload y URL pública desde la edge function
@@ -201,11 +214,14 @@ export async function uploadSocialPhotoToCloudflare(
     throw new Error(validation.error);
   }
 
+  // Normalizar el slug del evento según el estándar
+  const normalizedSlug = normalizeEventSlug(eventSlug);
+
   const randomId = generateRandomId();
-  const customId = `social-media-photo-${eventSlug}-${randomId}`;
+  const customId = `social-boletera-${normalizedSlug}-${randomId}`;
 
   try {
-    const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId, 'social-media-photo');
+    const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
     await uploadToCloudflare(file, uploadUrl);
     return publicUrl;
   } catch (error) {
@@ -238,11 +254,14 @@ export async function uploadPaymentProofToCloudflare(
     throw new Error('La imagen debe ser menor a 2MB');
   }
 
+  // Normalizar el slug del evento según el estándar
+  const normalizedSlug = normalizeEventSlug(eventSlug);
+
   const randomId = generateRandomId();
-  const customId = `payment-proof-${eventSlug}-${randomId}`;
+  const customId = `comprobante-boletera-${normalizedSlug}-${randomId}`;
 
   try {
-    const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId, 'payment-proof');
+    const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
     await uploadToCloudflare(file, uploadUrl);
     return publicUrl;
   } catch (error) {

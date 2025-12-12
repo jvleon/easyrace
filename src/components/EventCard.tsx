@@ -20,24 +20,23 @@ export default function EventCard({ name, slug, date, bannerUrl, mobileBannerUrl
       href={`/eventos/${slug}`}
       className="block bg-black-asphalt rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 border border-white-pure/10 hover:border-orange-primary/50"
     >
-      <div className="relative w-full h-48 bg-gray-800 overflow-hidden">
+      <div className="relative w-full aspect-square bg-gray-800 overflow-hidden">
         {hasMobileBanner || hasBanner ? (
           <>
-            {/* Banner móvil (visible solo en pantallas ≤500px) */}
-            {hasMobileBanner && (
+            {/* Banner móvil (siempre visible en todas las resoluciones para las cards) */}
+            {hasMobileBanner ? (
               <img
                 src={getBannerUrl(mobileBannerUrl, true)}
                 alt={name}
-                className="w-full h-full object-cover transition-transform duration-300 hover:scale-105 max-[500px]:block hidden"
+                className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                 loading="lazy"
               />
-            )}
-            {/* Banner desktop (visible en pantallas >500px o si no hay banner móvil) */}
-            {hasBanner && (
+            ) : (
+              /* Fallback al banner desktop si no hay banner móvil */
               <img
                 src={getBannerUrl(bannerUrl, false)}
                 alt={name}
-                className={`w-full h-full object-cover transition-transform duration-300 hover:scale-105 ${hasMobileBanner ? 'max-[500px]:hidden block' : 'block'}`}
+                className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                 loading="lazy"
               />
             )}

@@ -324,7 +324,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
   return (
     <div className="w-full m-0 p-0">
       {(event.banner_url || event.mobile_banner_url) && (
-        <div className="w-full h-[400px] relative overflow-hidden bg-black-asphalt/30 m-0 p-0">
+        <div className="w-full max-w-[1920px] mx-auto h-[420px] relative overflow-hidden bg-black-asphalt/30 m-0 p-0">
           {event.mobile_banner_url && (
             <img
               src={getBannerUrl(event.mobile_banner_url, true)}
