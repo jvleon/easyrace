@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { formatEventDate, isRegistrationOpen } from '../utils/dateFormatter';
 import { slateToHtml } from '../utils/slateToHtml';
 import { getBannerUrl } from '../utils/imageUrl';
+import { sanitizeHtml, sanitizeStravaEmbed } from '../utils/sanitizeHtml';
 import RegistrationButton from './RegistrationButton';
 import Countdown from './Countdown';
 import KitsSection from './KitsSection';
@@ -132,7 +133,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
             if (typeof window !== 'undefined') {
               // Buscar todos los contenedores de Strava en el DOM
               const stravaContainers = document.querySelectorAll('.strava-embed-container');
-              
+
               if (stravaContainers.length > 0) {
                 // Si el script ya está cargado, inicializar
                 if ((window as any).StravaEmbeds) {
@@ -146,10 +147,10 @@ export default function EventDetail({ slug }: EventDetailProps) {
             }
           }, 500);
         });
-        
+
         return () => cancelAnimationFrame(frame2);
       });
-      
+
       return () => cancelAnimationFrame(frame1);
     }
   }, [distanceGroups]);
@@ -316,6 +317,9 @@ export default function EventDetail({ slug }: EventDetailProps) {
     event.registration_start_date,
     event.registration_end_date
   );
+  // El envío de comprobantes se habilita desde la fecha de inicio de inscripciones y permanece disponible después
+  const registrationStartDate = event.registration_start_date ? new Date(event.registration_start_date) : null;
+  const paymentProofEnabled = !registrationStartDate || registrationStartDate <= new Date();
 
   const eventDate = event.date ? new Date(event.date) : null;
   const now = new Date();
@@ -361,7 +365,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
 
       <div className="container mx-auto px-4 pt-6 pb-8 md:pt-8 md:pb-12">
         <div className="max-w-4xl mx-auto">
-          <header 
+          <header
             {...(!isUpcoming || !event.date ? { id: 'inicio' } : {})}
             className={`mb-8 ${!isUpcoming || !event.date ? 'scroll-mt-32' : ''}`}
           >
@@ -378,7 +382,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
                 Ubicación: {event.location}
               </p>
             )}
-            
+
             {/* Redes sociales del evento */}
             {(event.facebook_url || event.instagram_url || event.whatsapp_url) && (
               <div className="flex gap-4 mt-4">
@@ -451,8 +455,12 @@ export default function EventDetail({ slug }: EventDetailProps) {
             )}
 
             <button
-              onClick={() => setIsPaymentProofModalOpen(true)}
-              className="w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg transition-colors bg-white-pure/10 hover:bg-white-pure/20 text-white-pure flex items-center justify-center gap-2"
+              onClick={() => paymentProofEnabled && setIsPaymentProofModalOpen(true)}
+              disabled={!paymentProofEnabled}
+              className={`w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg transition-colors flex items-center justify-center gap-2 ${paymentProofEnabled
+                  ? 'bg-white-pure/10 hover:bg-white-pure/20 text-white-pure cursor-pointer'
+                  : 'bg-white-pure/20 text-white-pure/50 cursor-not-allowed'
+                }`}
             >
               <FiUpload className="h-5 w-5" />
               Enviar Comprobante de Pago
@@ -470,7 +478,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
             {event.page_description && (
               <div
                 className="prose prose-invert max-w-none text-white-pure mb-12"
-                dangerouslySetInnerHTML={{ __html: slateToHtml(event.page_description) }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(slateToHtml(event.page_description)) }}
               />
             )}
 
@@ -528,7 +536,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
                           Ruta en Strava
                         </h4>
                         <div
-                          dangerouslySetInnerHTML={{ __html: group.stravaEmbed }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeStravaEmbed(group.stravaEmbed) }}
                           className="strava-embed-container"
                           data-strava-embed={group.distanceId || 'no-distance'}
                         />

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
 import Autoplay from 'embla-carousel-autoplay';
 import { supabase } from '../lib/supabase';
-import { getBannerUrl } from '../utils/imageUrl';
+import { getGalleryImageUrl } from '../utils/imageUrl';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 
 interface GalleryImage {
@@ -108,9 +108,9 @@ export default function EventGallery({ eventId }: EventGalleryProps) {
               >
                 <div className="relative w-full aspect-square bg-black-asphalt/30 overflow-hidden rounded-lg">
                   <img
-                    src={getBannerUrl(image.image_url)}
+                    src={getGalleryImageUrl(image.image_url) || image.image_url}
                     alt={`Galería ${image.order_index + 1}`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                     loading="lazy"
                   />
                 </div>
@@ -118,7 +118,7 @@ export default function EventGallery({ eventId }: EventGalleryProps) {
             ))}
           </div>
         </div>
-        
+
         {/* Flechas de navegación */}
         <button
           className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-white-pure/20 hover:bg-white-pure/30 backdrop-blur-sm rounded-full p-3 transition-all disabled:opacity-30 disabled:cursor-not-allowed"

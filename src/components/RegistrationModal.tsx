@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { parseRegistrationConfig, type ParsedField } from '../utils/registrationConfigParser';
 import { uploadIdPhotoToCloudflare, uploadSocialPhotoToCloudflare, uploadPaymentProofToCloudflare } from '../utils/cloudflare';
@@ -94,6 +94,84 @@ export default function RegistrationModal({
   const [competitor2Data, setCompetitor2Data] = useState<Record<string, any>>({});
   const [showCategoryChangeWarning, setShowCategoryChangeWarning] = useState(false);
   const [pendingCategoryChange, setPendingCategoryChange] = useState<string | null>(null);
+  
+  // Refs para scroll automático al error
+  const errorRef = useRef<HTMLDivElement>(null);
+  const modalContentRef = useRef<HTMLDivElement>(null);
+  // Refs para campos con errores (usando un objeto para mapear nombre de campo -> ref)
+  const fieldErrorRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Función para registrar un ref de campo con error
+  const registerFieldErrorRef = (fieldName: string, element: HTMLDivElement | null) => {
+    fieldErrorRefs.current[fieldName] = element;
+  };
+
+  // Función para obtener el primer campo con error basado en el orden visual
+  const getFirstErrorField = (): string | null => {
+    if (Object.keys(errors).length === 0) return null;
+
+    // Orden de prioridad basado en la posición visual en el formulario
+    const errorOrder = [
+      'general',
+      'gender',
+      'category_id',
+      'kit_id',
+      'kit_size_id',
+      'club',
+      'first_name',
+      'last_name',
+      'email',
+      'phone',
+      'birth_date',
+      'emergency_contact_name',
+      'emergency_contact_phone',
+      'terms'
+    ];
+
+    // Buscar el primer error según el orden de prioridad
+    for (const fieldName of errorOrder) {
+      if (errors[fieldName]) {
+        return fieldName;
+      }
+    }
+
+    // Si no se encontró en el orden de prioridad, buscar el primero en el objeto errors
+    return Object.keys(errors)[0];
+  };
+
+  // Efecto para hacer scroll hacia el mensaje de error de API
+  useEffect(() => {
+    if (submitError && errorRef.current) {
+      setTimeout(() => {
+        errorRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+          inline: 'nearest',
+        });
+      }, 100);
+    }
+  }, [submitError]);
+
+  // Efecto para hacer scroll al primer campo con error de validación
+  useEffect(() => {
+    if (Object.keys(errors).length > 0) {
+      setTimeout(() => {
+        const firstErrorField = getFirstErrorField();
+        if (!firstErrorField) return;
+
+        const errorElement = fieldErrorRefs.current[firstErrorField] ||
+          (modalContentRef.current?.querySelector(`[data-field-error="${firstErrorField}"]`) as HTMLElement | null);
+
+        if (errorElement) {
+          errorElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest',
+          });
+        }
+      }, 120);
+    }
+  }, [errors]);
 
   useEffect(() => {
     if (isOpen) {
@@ -635,10 +713,8 @@ export default function RegistrationModal({
         return;
       }
 
-      // En paso 2 de parejas, el email NO es obligatorio para el competidor 2
-      const isEmailFieldInStep2 = isPairCategory && currentStep === 2 && field.name === 'email';
-
-      if (field.required && !isEmailFieldInStep2) {
+      // Para categorías de parejas, el correo es obligatorio también para el segundo competidor
+      if (field.required) {
         const value = formData[field.name];
         if (!value || (typeof value === 'string' && value.trim() === '')) {
           newErrors[field.name] = `${field.label} es requerido`;
@@ -976,58 +1052,45 @@ export default function RegistrationModal({
         if (pairError) throw pairError;
         competitor2Id = pairInsertedData.id;
 
-        // Crear relación de pareja y obtener el pair_id
-        const { data: pairData, error: pairRelationError } = await supabase
-          .from('competitor_pairs')
-          .insert([{
-            event_id: eventId,
-            competitor_1_id: competitor1Id,
-            competitor_2_id: competitor2Id,
-            payment_confirmed: false,
-          }])
-          .select()
-          .single();
+        // Crear relación de pareja usando función RPC segura
+        // Esta función valida y crea el pair, además actualiza ambos competidores automáticamente
+        const { data: pairData, error: pairRelationError } = await supabase.rpc('create_competitor_pair', {
+          p_event_id: eventId,
+          p_competitor_1_id: competitor1Id,
+          p_competitor_2_id: competitor2Id
+        });
 
-        if (pairRelationError) throw pairRelationError;
+        if (pairRelationError) {
+          console.error('[RegistrationModal] Error creating competitor pair:', pairRelationError);
+          throw pairRelationError;
+        }
 
-        // ⚠️ PASO 4 CRÍTICO: Actualizar ambos competidores con el pair_id
-        const { error: updatePairIdError } = await supabase
-          .from('competitors')
-          .update({ pair_id: pairData.id })
-          .in('id', [competitor1Id, competitor2Id]);
-
-        if (updatePairIdError) throw updatePairIdError;
-
-        // Incrementar sold_quantity del kit para el segundo competidor también
+        // Incrementar sold_quantity del kit para el segundo competidor usando función RPC segura
         if (selectedKitId) {
-          const { data: kitData } = await supabase
-            .from('kits')
-            .select('sold_quantity')
-            .eq('id', selectedKitId)
-            .single();
+          const { error: kitIncrementError } = await supabase.rpc('increment_kit_sold_quantity', {
+            p_kit_id: selectedKitId,
+            p_event_id: eventId,
+            p_quantity: 1
+          });
 
-          if (kitData) {
-            await supabase
-              .from('kits')
-              .update({ sold_quantity: (kitData.sold_quantity || 0) + 1 })
-              .eq('id', selectedKitId);
+          if (kitIncrementError) {
+            console.error('[RegistrationModal] Error incrementing kit quantity:', kitIncrementError);
+            // No lanzar error aquí, solo loguear, ya que el registro ya se completó
           }
         }
       }
 
-      // Incrementar sold_quantity del kit
-      if (selectedKitId && insertedData && insertedData.length > 0) {
-        const { data: kitData } = await supabase
-          .from('kits')
-          .select('sold_quantity')
-          .eq('id', selectedKitId)
-          .single();
+      // Incrementar sold_quantity del kit para el primer competidor usando función RPC segura
+      if (selectedKitId && insertedData) {
+        const { error: kitIncrementError } = await supabase.rpc('increment_kit_sold_quantity', {
+          p_kit_id: selectedKitId,
+          p_event_id: eventId,
+          p_quantity: 1
+        });
 
-        if (kitData) {
-          await supabase
-            .from('kits')
-            .update({ sold_quantity: (kitData.sold_quantity || 0) + 1 })
-            .eq('id', selectedKitId);
+        if (kitIncrementError) {
+          console.error('[RegistrationModal] Error incrementing kit quantity:', kitIncrementError);
+          // No lanzar error aquí, solo loguear, ya que el registro ya se completó
         }
       }
 
@@ -1069,6 +1132,7 @@ export default function RegistrationModal({
       aria-labelledby="modal-title"
     >
       <div
+        ref={modalContentRef}
         id="registration-modal-content"
         className="bg-black-asphalt border border-white-pure/20 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -1120,16 +1184,13 @@ export default function RegistrationModal({
             </div>
           ) : (
             <>
-              {submitError && (
-                <div className="mb-6 p-4 bg-red-fire/20 border border-red-fire rounded-lg flex items-start">
-                  <FiAlertCircle className="text-red-fire mr-3 mt-0.5" size={20} />
-                  <p className="text-white-pure text-sm">{submitError}</p>
-                </div>
-              )}
-
               <div className="space-y-4">
                 {/* Selector de género - editable en paso 2 solo si categoría es mixta */}
-                <div className="space-y-2">
+                <div 
+                  ref={(el) => registerFieldErrorRef('gender', el)}
+                  data-field-error="gender"
+                  className="space-y-2"
+                >
                   <label className="block text-white-pure text-sm font-medium mb-2">
                     Género <span className="text-red-fire ml-1">*</span>
                   </label>
@@ -1192,7 +1253,11 @@ export default function RegistrationModal({
 
                 {/* Selector de categoría - bloqueado en paso 2 */}
                 {selectedGender && (
-                  <div className="space-y-2">
+                  <div 
+                    ref={(el) => registerFieldErrorRef('category_id', el)}
+                    data-field-error="category_id"
+                    className="space-y-2"
+                  >
                     <label className="block text-white-pure text-sm font-medium mb-2">
                       Categoría <span className="text-red-fire ml-1">*</span>
                     </label>
@@ -1239,7 +1304,11 @@ export default function RegistrationModal({
 
                 {/* Selector de kit - bloqueado en paso 2 */}
                 {formData.category_id && kits.length > 0 && (
-                  <div className="space-y-2">
+                  <div 
+                    ref={(el) => registerFieldErrorRef('kit_id', el)}
+                    data-field-error="kit_id"
+                    className="space-y-2"
+                  >
                     <label className="block text-white-pure text-sm font-medium mb-2">
                       Kit <span className="text-red-fire ml-1">*</span>
                     </label>
@@ -1280,7 +1349,11 @@ export default function RegistrationModal({
 
                 {/* Selector de talla - independiente para cada competidor */}
                 {selectedKitId && kitSizes.length > 0 && (
-                  <div className="space-y-2">
+                  <div 
+                    ref={(el) => registerFieldErrorRef('kit_size_id', el)}
+                    data-field-error="kit_size_id"
+                    className="space-y-2"
+                  >
                     <label className="block text-white-pure text-sm font-medium mb-2">
                       Talla <span className="text-red-fire ml-1">*</span>
                     </label>
@@ -1315,7 +1388,12 @@ export default function RegistrationModal({
                       .map((field) => {
                         if (field.name === 'club_id' || field.name === 'club') {
                           return (
-                            <div key={field.name} className="space-y-2">
+                            <div 
+                              key={field.name} 
+                              ref={(el) => registerFieldErrorRef('club', el)}
+                              data-field-error="club"
+                              className="space-y-2"
+                            >
                               <label className="block text-white-pure text-sm font-medium mb-2">
                                 {field.label}
                                 {field.required && <span className="text-red-fire ml-1">*</span>}
@@ -1823,7 +1901,11 @@ export default function RegistrationModal({
 
 
               {/* Checkbox de Términos y Condiciones */}
-              <div className="mt-6 mb-4">
+              <div 
+                ref={(el) => registerFieldErrorRef('terms', el)}
+                data-field-error="terms"
+                className="mt-6 mb-4"
+              >
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1867,6 +1949,16 @@ export default function RegistrationModal({
                   <p className="mt-1 text-sm text-red-fire">{errors.terms}</p>
                 )}
               </div>
+
+            {submitError && (
+              <div 
+                ref={errorRef}
+                className="mt-4 p-4 bg-red-fire/20 border border-red-fire rounded-lg flex items-start"
+              >
+                <FiAlertCircle className="text-red-fire mr-3 mt-0.5" size={20} />
+                <p className="text-white-pure text-sm">{submitError}</p>
+              </div>
+            )}
 
               <div className="mt-6 flex gap-4 justify-between">
                 <div className="flex gap-4">
@@ -2007,7 +2099,11 @@ export default function RegistrationModal({
     }
 
     return (
-      <div key={field.name}>
+      <div 
+        key={field.name}
+        ref={(el) => registerFieldErrorRef(field.name, el)}
+        data-field-error={field.name}
+      >
         <label
           htmlFor={field.name}
           className="block text-white-pure text-sm font-medium mb-2"

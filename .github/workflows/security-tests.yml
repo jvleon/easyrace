@@ -1,0 +1,115 @@
+name: Security Tests
+
+on:
+  schedule:
+    # Ejecutar cada domingo a las 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/security-*.js'
+      - 'src/**/*.tsx'
+      - 'src/**/*.ts'
+      - 'supabase/migrations/**/*.sql'
+
+jobs:
+  security-tests:
+    name: Security Penetration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Puppeteer
+        run: npm install puppeteer --save-dev
+
+      - name: Run HTTP Security Tests
+        run: npm run security:penetration
+        env:
+          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+          TEST_URL: ${{ secrets.TEST_URL || 'https://easyrace.com.mx' }}
+
+      - name: Run Browser Security Tests
+        run: npm run security:browser
+        env:
+          TEST_URL: ${{ secrets.TEST_URL || 'https://easyrace.com.mx' }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-test-results
+          path: |
+            security-test-results.json
+            browser-security-test-results.json
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## 🔒 Security Test Results\n\n';
+            
+            try {
+              const httpResults = JSON.parse(fs.readFileSync('security-test-results.json', 'utf8'));
+              const browserResults = JSON.parse(fs.readFileSync('browser-security-test-results.json', 'utf8'));
+              
+              const httpPassRate = ((httpResults.passed.length / httpResults.total) * 100).toFixed(2);
+              const browserPassRate = ((browserResults.passed.length / browserResults.total) * 100).toFixed(2);
+              
+              comment += `### HTTP Tests\n`;
+              comment += `- Total: ${httpResults.total}\n`;
+              comment += `- ✅ Passed: ${httpResults.passed.length}\n`;
+              comment += `- ❌ Failed: ${httpResults.failed.length}\n`;
+              comment += `- 📈 Pass Rate: ${httpPassRate}%\n\n`;
+              
+              comment += `### Browser Tests\n`;
+              comment += `- Total: ${browserResults.total}\n`;
+              comment += `- ✅ Passed: ${browserResults.passed.length}\n`;
+              comment += `- ❌ Failed: ${browserResults.failed.length}\n`;
+              comment += `- 📈 Pass Rate: ${browserPassRate}%\n\n`;
+              
+              if (httpResults.failed.length > 0 || browserResults.failed.length > 0) {
+                comment += `### ⚠️ Failed Tests\n\n`;
+                httpResults.failed.forEach(f => {
+                  comment += `- ${f.test}\n`;
+                });
+                browserResults.failed.forEach(f => {
+                  comment += `- ${f.test}\n`;
+                });
+              }
+              
+              if (parseFloat(httpPassRate) >= 95 && parseFloat(browserPassRate) >= 95) {
+                comment += `\n✅ **System is highly secure**\n`;
+              } else if (parseFloat(httpPassRate) >= 80 && parseFloat(browserPassRate) >= 80) {
+                comment += `\n⚠️ **System is secure with some areas for improvement**\n`;
+              } else {
+                comment += `\n❌ **System requires urgent security improvements**\n`;
+              }
+            } catch (error) {
+              comment += `Error reading test results: ${error.message}\n`;
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+

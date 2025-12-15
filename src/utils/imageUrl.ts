@@ -15,3 +15,17 @@ export function getBannerUrl(url: string | null | undefined, isMobile: boolean =
   return url;
 }
 
+/**
+ * Convierte URLs de Cloudflare Images de /public a /boxgallerycontained
+ * para usarse en la galería de fotos de los eventos.
+ */
+export function getGalleryImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+
+  if (url.includes('imagedelivery.net')) {
+    return url.replace('/public', '/boxgallerycontained');
+  }
+
+  return url;
+}
+
