@@ -29,3 +29,17 @@ export function getGalleryImageUrl(url: string | null | undefined): string | nul
   return url;
 }
 
+/**
+ * Convierte URLs de Cloudflare Images de /public a /kitDisplay
+ * para usarse en las imágenes de los kits.
+ */
+export function getKitImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+
+  if (url.includes('imagedelivery.net')) {
+    return url.replace('/public', '/kitDisplay');
+  }
+
+  return url;
+}
+

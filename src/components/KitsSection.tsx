@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { getBannerUrl } from '../utils/imageUrl';
+import { getKitImageUrl } from '../utils/imageUrl';
 
 interface Kit {
   id: string;
@@ -115,9 +115,9 @@ export default function KitsSection({ eventId }: KitsSectionProps) {
             className="bg-white-pure/10 border border-white-pure/20 rounded-lg overflow-hidden hover:bg-white-pure/15 transition-colors"
           >
             {kit.image_url && (
-              <div className="w-full aspect-square bg-black-asphalt/30 overflow-hidden">
+              <div className="w-full aspect-[4/5] bg-black-asphalt/30 overflow-hidden">
                 <img
-                  src={getBannerUrl(kit.image_url)}
+                  src={getKitImageUrl(kit.image_url) || kit.image_url}
                   alt={kit.name}
                   className="w-full h-full object-cover"
                   loading="lazy"
