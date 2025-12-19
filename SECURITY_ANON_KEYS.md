@@ -208,3 +208,5 @@ if (attempts > 5) {
 **Conclusión**: Usar anon keys es seguro si RLS está bien configurado. No necesitas autenticación de usuarios para tener seguridad.
 
 
+
+

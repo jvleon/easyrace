@@ -276,3 +276,5 @@ await supabase.rpc('increment_kit_sold_quantity', {
 - Ver `src/components/RegistrationModal.tsx` para implementación TypeScript
 
 
+
+

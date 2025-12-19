@@ -356,3 +356,5 @@ GRANT EXECUTE ON FUNCTION increment_kit_sold_quantity TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION update_competitor_pair_id TO anon, authenticated;
 
 
+
+

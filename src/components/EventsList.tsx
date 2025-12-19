@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import EventCard from './EventCard';
 import { getBannerUrl } from '../utils/imageUrl';
+import { isDemoSubdomain } from '../utils/subdomain';
 
 interface Event {
   id: string;
@@ -12,6 +13,7 @@ interface Event {
   mobile_banner_url: string | null;
   location: string | null;
   status: string;
+  is_demo?: boolean;
 }
 
 export default function EventsList() {
@@ -28,9 +30,11 @@ export default function EventsList() {
       setLoading(true);
       setError(null);
 
+      const isDemo = isDemoSubdomain();
+
       const { data, error: queryError } = await supabase
         .from('events')
-        .select('id, name, slug, date, banner_url, mobile_banner_url, location, status')
+        .select('id, name, slug, date, banner_url, mobile_banner_url, location, status, is_demo')
         .in('status', ['published', 'completed'])
         .not('name', 'is', null)
         .not('date', 'is', null)
@@ -41,8 +45,24 @@ export default function EventsList() {
       }
 
       // Filtro adicional para asegurar que name y date existan
+      // Y filtrar según el subdominio: eventos demo solo en demo, eventos normales solo en producción
       const validEvents = (data || []).filter(
-        (event) => event.name && event.name.trim() !== '' && event.date
+        (event) => {
+          // Validar que tenga name y date
+          if (!event.name || event.name.trim() === '' || !event.date) {
+            return false;
+          }
+          
+          // Filtrar según subdominio y is_demo
+          const eventIsDemo = event.is_demo === true;
+          if (isDemo) {
+            // En demo: solo mostrar eventos con is_demo = true
+            return eventIsDemo;
+          } else {
+            // En producción: solo mostrar eventos con is_demo = false o null/undefined
+            return !eventIsDemo;
+          }
+        }
       ) as Event[];
 
       setEvents(validEvents);

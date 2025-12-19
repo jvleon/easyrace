@@ -7,11 +7,13 @@ import '../../styles/global.css';
 
 // Generar todas las rutas posibles en build time
 // Los datos se cargan dinámicamente del lado del cliente
+// Nota: Se generan rutas para todos los eventos (demo y no demo)
+// La validación del subdominio se hace en runtime en el componente EventDetail
 export async function getStaticPaths() {
   try {
     const { data: events, error } = await supabase
       .from('events')
-      .select('slug')
+      .select('slug, is_demo')
       .in('status', ['published', 'completed'])
       .not('name', 'is', null)
       .not('date', 'is', null);
@@ -23,6 +25,7 @@ export async function getStaticPaths() {
     }
 
     // Generar rutas para todos los eventos existentes
+    // La validación del subdominio se hace en runtime en EventDetail
     const paths = events.map((event) => ({
       params: { slug: event.slug },
     }));

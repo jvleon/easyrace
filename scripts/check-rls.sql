@@ -85,3 +85,5 @@ ORDER BY table_name, privilege_type;
 --   - Solo lectura pública
 
 
+
+

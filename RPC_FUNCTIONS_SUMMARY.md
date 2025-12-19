@@ -135,3 +135,5 @@ await supabase.rpc('increment_kit_sold_quantity', {...});
 - Los errores son descriptivos pero no exponen información sensible
 
 
+
+

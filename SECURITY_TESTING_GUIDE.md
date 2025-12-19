@@ -528,3 +528,5 @@ Integrar las pruebas en CI/CD para ejecutarlas automáticamente en cada deploy o
 *Última actualización: 12 de Diciembre, 2025*
 
 
+
+

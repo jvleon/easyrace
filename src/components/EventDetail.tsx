@@ -4,6 +4,7 @@ import { formatEventDate, isRegistrationOpen } from '../utils/dateFormatter';
 import { slateToHtml } from '../utils/slateToHtml';
 import { getBannerUrl } from '../utils/imageUrl';
 import { sanitizeHtml, sanitizeStravaEmbed } from '../utils/sanitizeHtml';
+import { isDemoSubdomain } from '../utils/subdomain';
 import RegistrationButton from './RegistrationButton';
 import Countdown from './Countdown';
 import KitsSection from './KitsSection';
@@ -167,16 +168,27 @@ export default function EventDetail({ slug }: EventDetailProps) {
         throw new Error('Slug no encontrado');
       }
 
+      const isDemo = isDemoSubdomain();
+
       // Cargar evento
       const { data: eventData, error: eventError } = await supabase
         .from('events')
-        .select('*, whatsapp_url, facebook_url, instagram_url')
+        .select('*, whatsapp_url, facebook_url, instagram_url, is_demo')
         .eq('slug', currentSlug)
         .in('status', ['published', 'completed'])
         .single();
 
       if (eventError || !eventData) {
         throw new Error('Evento no encontrado');
+      }
+
+      // Verificar que el evento corresponda al subdominio actual
+      const eventIsDemo = eventData.is_demo === true;
+      if (isDemo && !eventIsDemo) {
+        throw new Error('Este evento no está disponible en el subdominio demo');
+      }
+      if (!isDemo && eventIsDemo) {
+        throw new Error('Este evento solo está disponible en el subdominio demo');
       }
 
       setEvent(eventData);

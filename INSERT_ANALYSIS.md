@@ -177,3 +177,5 @@ END IF;
 4. ⚠️ Mover lógica de kits a función RPC o dentro de `insert_competitor`
 
 
+
+
