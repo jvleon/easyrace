@@ -19,6 +19,7 @@ interface RegistrationButtonProps {
   eventSlug: string; // Slug del evento para el custom ID de Cloudflare
   registrationConfig: any;
   registrationOpen: boolean;
+  registrationsClosed?: boolean; // Flag que indica si las inscripciones están cerradas manualmente
   buttonText?: string;
   disabledText?: string;
   generalPrice?: number | null;
@@ -32,6 +33,7 @@ export default function RegistrationButton({
   eventSlug,
   registrationConfig,
   registrationOpen,
+  registrationsClosed = false,
   buttonText = 'Registrarse',
   disabledText = 'Próximamente',
   generalPrice,
@@ -54,7 +56,16 @@ export default function RegistrationButton({
     registeredCountNum >= maxCompetitorsNum;
   
   const isDisabled = !registrationOpen || isMaxReached;
-  const displayText = isMaxReached ? 'Sin lugares disponibles' : (registrationOpen ? buttonText : disabledText);
+  
+  // Determinar el texto a mostrar según el motivo de deshabilitación
+  let displayText = buttonText;
+  if (isMaxReached) {
+    displayText = 'Sin lugares disponibles';
+  } else if (!registrationOpen) {
+    // Si está cerrado por la flag registrations_closed, mostrar "Registro cerrado"
+    // Si no, mostrar el texto por defecto (Próximamente)
+    displayText = registrationsClosed ? 'Registro cerrado' : disabledText;
+  }
 
 
 

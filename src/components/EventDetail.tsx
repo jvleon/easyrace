@@ -325,10 +325,15 @@ export default function EventDetail({ slug }: EventDetailProps) {
   }
 
   const isCompleted = event.status === 'completed';
-  const registrationOpen = !isCompleted && isRegistrationOpen(
+  const isWithinDateRange = isRegistrationOpen(
     event.registration_start_date,
     event.registration_end_date
   );
+  // Las inscripciones están abiertas solo si:
+  // 1. El evento no está completado
+  // 2. Está dentro del rango de fechas
+  // 3. Y registrations_closed no es true
+  const registrationOpen = !isCompleted && isWithinDateRange && !event.registrations_closed;
   // El envío de comprobantes se habilita desde la fecha de inicio de inscripciones y permanece disponible después
   const registrationStartDate = event.registration_start_date ? new Date(event.registration_start_date) : null;
   const paymentProofEnabled = !registrationStartDate || registrationStartDate <= new Date();
@@ -447,6 +452,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
                 eventSlug={event.slug}
                 registrationConfig={event.registration_config}
                 registrationOpen={registrationOpen}
+                registrationsClosed={event.registrations_closed === true}
                 generalPrice={event.general_price}
                 currency={event.currency || 'MXN'}
                 maxCompetitors={event.max_competitors}
