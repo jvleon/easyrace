@@ -1,5 +1,4 @@
-# Rewrite rules para rutas dinámicas de eventos
-# Esto permite que eventos nuevos funcionen sin rebuild
+# Rewrite rules para rutas dinámicas de eventos y manejo de 404
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
@@ -9,6 +8,16 @@
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^eventos/(.+)$ /eventos/dynamic/ [L]
+  
+  # Para todas las demás rutas que no existen, mostrar la página 404 de Astro
+  # Esto debe ir después de las reglas específicas de eventos
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_URI} !^/404\.html$
+  RewriteRule ^(.*)$ /404.html [L]
 </IfModule>
+
+# Configurar ErrorDocument para mostrar la página 404 de Astro
+ErrorDocument 404 /404.html
 
 

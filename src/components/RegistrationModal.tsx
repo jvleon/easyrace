@@ -94,7 +94,7 @@ export default function RegistrationModal({
   const [competitor2Data, setCompetitor2Data] = useState<Record<string, any>>({});
   const [showCategoryChangeWarning, setShowCategoryChangeWarning] = useState(false);
   const [pendingCategoryChange, setPendingCategoryChange] = useState<string | null>(null);
-  
+
   // Refs para scroll automático al error
   const errorRef = useRef<HTMLDivElement>(null);
   const modalContentRef = useRef<HTMLDivElement>(null);
@@ -1064,34 +1064,6 @@ export default function RegistrationModal({
           console.error('[RegistrationModal] Error creating competitor pair:', pairRelationError);
           throw pairRelationError;
         }
-
-        // Incrementar sold_quantity del kit para el segundo competidor usando función RPC segura
-        if (selectedKitId) {
-          const { error: kitIncrementError } = await supabase.rpc('increment_kit_sold_quantity', {
-            p_kit_id: selectedKitId,
-            p_event_id: eventId,
-            p_quantity: 1
-          });
-
-          if (kitIncrementError) {
-            console.error('[RegistrationModal] Error incrementing kit quantity:', kitIncrementError);
-            // No lanzar error aquí, solo loguear, ya que el registro ya se completó
-          }
-        }
-      }
-
-      // Incrementar sold_quantity del kit para el primer competidor usando función RPC segura
-      if (selectedKitId && insertedData) {
-        const { error: kitIncrementError } = await supabase.rpc('increment_kit_sold_quantity', {
-          p_kit_id: selectedKitId,
-          p_event_id: eventId,
-          p_quantity: 1
-        });
-
-        if (kitIncrementError) {
-          console.error('[RegistrationModal] Error incrementing kit quantity:', kitIncrementError);
-          // No lanzar error aquí, solo loguear, ya que el registro ya se completó
-        }
       }
 
       // Verificar si el evento es gratis
@@ -1186,7 +1158,7 @@ export default function RegistrationModal({
             <>
               <div className="space-y-4">
                 {/* Selector de género - editable en paso 2 solo si categoría es mixta */}
-                <div 
+                <div
                   ref={(el) => registerFieldErrorRef('gender', el)}
                   data-field-error="gender"
                   className="space-y-2"
@@ -1253,7 +1225,7 @@ export default function RegistrationModal({
 
                 {/* Selector de categoría - bloqueado en paso 2 */}
                 {selectedGender && (
-                  <div 
+                  <div
                     ref={(el) => registerFieldErrorRef('category_id', el)}
                     data-field-error="category_id"
                     className="space-y-2"
@@ -1304,7 +1276,7 @@ export default function RegistrationModal({
 
                 {/* Selector de kit - bloqueado en paso 2 */}
                 {formData.category_id && kits.length > 0 && (
-                  <div 
+                  <div
                     ref={(el) => registerFieldErrorRef('kit_id', el)}
                     data-field-error="kit_id"
                     className="space-y-2"
@@ -1349,7 +1321,7 @@ export default function RegistrationModal({
 
                 {/* Selector de talla - independiente para cada competidor */}
                 {selectedKitId && kitSizes.length > 0 && (
-                  <div 
+                  <div
                     ref={(el) => registerFieldErrorRef('kit_size_id', el)}
                     data-field-error="kit_size_id"
                     className="space-y-2"
@@ -1388,8 +1360,8 @@ export default function RegistrationModal({
                       .map((field) => {
                         if (field.name === 'club_id' || field.name === 'club') {
                           return (
-                            <div 
-                              key={field.name} 
+                            <div
+                              key={field.name}
                               ref={(el) => registerFieldErrorRef('club', el)}
                               data-field-error="club"
                               className="space-y-2"
@@ -1901,7 +1873,7 @@ export default function RegistrationModal({
 
 
               {/* Checkbox de Términos y Condiciones */}
-              <div 
+              <div
                 ref={(el) => registerFieldErrorRef('terms', el)}
                 data-field-error="terms"
                 className="mt-6 mb-4"
@@ -1950,15 +1922,15 @@ export default function RegistrationModal({
                 )}
               </div>
 
-            {submitError && (
-              <div 
-                ref={errorRef}
-                className="mt-4 p-4 bg-red-fire/20 border border-red-fire rounded-lg flex items-start"
-              >
-                <FiAlertCircle className="text-red-fire mr-3 mt-0.5" size={20} />
-                <p className="text-white-pure text-sm">{submitError}</p>
-              </div>
-            )}
+              {submitError && (
+                <div
+                  ref={errorRef}
+                  className="mt-4 p-4 bg-red-fire/20 border border-red-fire rounded-lg flex items-start"
+                >
+                  <FiAlertCircle className="text-red-fire mr-3 mt-0.5" size={20} />
+                  <p className="text-white-pure text-sm">{submitError}</p>
+                </div>
+              )}
 
               <div className="mt-6 flex gap-4 justify-between">
                 <div className="flex gap-4">
@@ -2099,7 +2071,7 @@ export default function RegistrationModal({
     }
 
     return (
-      <div 
+      <div
         key={field.name}
         ref={(el) => registerFieldErrorRef(field.name, el)}
         data-field-error={field.name}
