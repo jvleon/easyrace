@@ -69,6 +69,10 @@ export default function EventDetail({ slug }: EventDetailProps) {
       const pathParts = window.location.pathname.split('/eventos/');
       if (pathParts.length > 1) {
         currentSlug = pathParts[1].split('/')[0];
+        // Limpiar el slug: remover slash al final y espacios
+        if (currentSlug) {
+          currentSlug = currentSlug.replace(/\/$/, '').trim();
+        }
       }
     }
 
@@ -162,9 +166,18 @@ export default function EventDetail({ slug }: EventDetailProps) {
       setError(null);
 
       // Usar el slug proporcionado o el de la prop, o extraerlo de la URL
-      const currentSlug = eventSlug || slug || (typeof window !== 'undefined' ? window.location.pathname.split('/eventos/')[1]?.split('/')[0] : '');
+      let currentSlug = eventSlug || slug || (typeof window !== 'undefined' ? window.location.pathname.split('/eventos/')[1]?.split('/')[0] : '');
+      
+      // Limpiar el slug: remover slash al final y espacios
+      if (currentSlug) {
+        currentSlug = currentSlug.replace(/\/$/, '').trim();
+      }
 
       if (!currentSlug) {
+        // Redirigir a 404 si no hay slug
+        if (typeof window !== 'undefined') {
+          window.location.href = '/404';
+        }
         throw new Error('Slug no encontrado');
       }
 
@@ -179,6 +192,10 @@ export default function EventDetail({ slug }: EventDetailProps) {
         .single();
 
       if (eventError || !eventData) {
+        // Redirigir a 404 si el evento no se encuentra
+        if (typeof window !== 'undefined') {
+          window.location.href = '/404';
+        }
         throw new Error('Evento no encontrado');
       }
 

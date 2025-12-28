@@ -4,6 +4,7 @@ import { parseRegistrationConfig, type ParsedField } from '../utils/registration
 import { uploadIdPhotoToCloudflare, uploadSocialPhotoToCloudflare, uploadPaymentProofToCloudflare } from '../utils/cloudflare';
 import { validateEmailNotTemporary } from '../utils/emailValidation';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader } from 'react-icons/fi';
+import ReCAPTCHA from 'react-google-recaptcha';
 
 interface Category {
   id: string;
@@ -98,6 +99,11 @@ export default function RegistrationModal({
   // Refs para scroll automático al error
   const errorRef = useRef<HTMLDivElement>(null);
   const modalContentRef = useRef<HTMLDivElement>(null);
+  
+  // Estados para reCAPTCHA
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || '';
   // Refs para campos con errores (usando un objeto para mapear nombre de campo -> ref)
   const fieldErrorRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -910,6 +916,41 @@ export default function RegistrationModal({
       return;
     }
 
+    // Validar reCAPTCHA solo en el paso final (no en paso 1 de parejas)
+    if (recaptchaSiteKey && (!isPairCategory || currentStep === 2)) {
+      if (!recaptchaToken) {
+        setErrors((prev) => ({
+          ...prev,
+          recaptcha: 'Por favor, completa el reCAPTCHA para continuar.',
+        }));
+        // Scroll al reCAPTCHA
+        setTimeout(() => {
+          recaptchaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+        return;
+      }
+
+      // Validar el token con la edge function
+      try {
+        const { data, error: recaptchaError } = await supabase.functions.invoke('verify-recaptcha', {
+          body: { token: recaptchaToken },
+        });
+
+        if (recaptchaError || !data?.valid) {
+          throw new Error(data?.error || 'Error al validar reCAPTCHA');
+        }
+      } catch (recaptchaValidationError: any) {
+        console.error('Error validando reCAPTCHA:', recaptchaValidationError);
+        setErrors((prev) => ({
+          ...prev,
+          recaptcha: recaptchaValidationError.message || 'Error al validar reCAPTCHA. Por favor, intenta de nuevo.',
+        }));
+        // Resetear reCAPTCHA
+        recaptchaRef.current?.reset();
+        setRecaptchaToken(null);
+        return;
+      }
+    }
 
     try {
       setSubmitting(true);
@@ -1078,6 +1119,9 @@ export default function RegistrationModal({
       }
 
       setSuccess(true);
+      // Resetear reCAPTCHA después de éxito
+      setRecaptchaToken(null);
+      recaptchaRef.current?.reset();
       // El usuario cerrará manualmente el modal
     } catch (error: any) {
       console.error('Error submitting registration:', error);
@@ -1921,6 +1965,41 @@ export default function RegistrationModal({
                   <p className="mt-1 text-sm text-red-fire">{errors.terms}</p>
                 )}
               </div>
+
+              {/* reCAPTCHA - Solo mostrar en el paso final (no en paso 1 de parejas) */}
+              {recaptchaSiteKey && (!isPairCategory || currentStep === 2) && (
+                <div className="mt-4 mb-4 flex flex-col items-center">
+                  <ReCAPTCHA
+                    ref={recaptchaRef}
+                    sitekey={recaptchaSiteKey}
+                    theme="dark"
+                    onChange={(token) => {
+                      setRecaptchaToken(token);
+                      // Limpiar error de reCAPTCHA si existe
+                      if (errors.recaptcha) {
+                        setErrors((prev) => {
+                          const newErrors = { ...prev };
+                          delete newErrors.recaptcha;
+                          return newErrors;
+                        });
+                      }
+                    }}
+                    onExpired={() => {
+                      setRecaptchaToken(null);
+                    }}
+                    onError={() => {
+                      setRecaptchaToken(null);
+                      setErrors((prev) => ({
+                        ...prev,
+                        recaptcha: 'Error al cargar reCAPTCHA. Por favor, recarga la página.',
+                      }));
+                    }}
+                  />
+                  {errors.recaptcha && (
+                    <p className="mt-2 text-sm text-red-fire text-center w-full">{errors.recaptcha}</p>
+                  )}
+                </div>
+              )}
 
               {submitError && (
                 <div

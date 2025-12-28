@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { uploadPaymentProofToCloudflare } from '../utils/cloudflare';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader, FiUpload } from 'react-icons/fi';
+import ReCAPTCHA from 'react-google-recaptcha';
 
 interface PaymentProofModalProps {
   eventId: string;
@@ -36,6 +37,12 @@ export default function PaymentProofModal({
   const [error, setError] = useState<string | null>(null);
   const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
 
+  // Estados para reCAPTCHA
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null);
+  const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || '';
+
   // Resetear estado al abrir/cerrar el modal
   const handleClose = () => {
     setEmail('');
@@ -47,6 +54,8 @@ export default function PaymentProofModal({
     setUploadSuccess(false);
     setError(null);
     setShowReplaceConfirm(false);
+    setRecaptchaToken(null);
+    recaptchaRef.current?.reset();
     onClose();
   };
 
@@ -79,6 +88,36 @@ export default function PaymentProofModal({
     if (!validateEmail(email)) {
       setEmailError('Correo electrónico inválido');
       return;
+    }
+
+    // Validar reCAPTCHA si está configurado
+    if (recaptchaSiteKey) {
+      if (!recaptchaToken) {
+        setError('Por favor, completa el reCAPTCHA para continuar.');
+        // Scroll al reCAPTCHA
+        setTimeout(() => {
+          recaptchaContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+        return;
+      }
+
+      // Validar el token con la edge function
+      try {
+        const { data, error: recaptchaError } = await supabase.functions.invoke('verify-recaptcha', {
+          body: { token: recaptchaToken },
+        });
+
+        if (recaptchaError || !data?.valid) {
+          throw new Error(data?.error || 'Error al validar reCAPTCHA');
+        }
+      } catch (recaptchaValidationError: any) {
+        console.error('Error validando reCAPTCHA:', recaptchaValidationError);
+        setError(recaptchaValidationError.message || 'Error al validar reCAPTCHA. Por favor, intenta de nuevo.');
+        // Resetear reCAPTCHA
+        recaptchaRef.current?.reset();
+        setRecaptchaToken(null);
+        return;
+      }
     }
 
     try {
@@ -198,6 +237,9 @@ export default function PaymentProofModal({
       setUploadSuccess(true);
       setError(null);
       setShowReplaceConfirm(false);
+      // Resetear reCAPTCHA después de éxito
+      setRecaptchaToken(null);
+      recaptchaRef.current?.reset();
 
       // Cerrar modal después de 5 segundos
       setTimeout(() => {
@@ -277,14 +319,32 @@ export default function PaymentProofModal({
                     type="email"
                     value={email}
                     onChange={(e) => {
-                      setEmail(e.target.value);
-                      setEmailError(null);
-                      setError(null);
-                      setValidationResult(null);
-                      setShowReplaceConfirm(false);
+                      // Solo permitir cambios si no hay validación exitosa
+                      if (!validationResult?.is_registered) {
+                        const newEmail = e.target.value;
+                        const hadValidation = !!validationResult;
+                        setEmail(newEmail);
+                        setEmailError(null);
+                        // Solo limpiar errores, no resetear validación ni reCAPTCHA mientras se escribe
+                        if (error && !error.includes('reCAPTCHA')) {
+                          setError(null);
+                        }
+                        // Solo resetear validación y reCAPTCHA si había una validación previa
+                        // (no mientras el usuario está escribiendo por primera vez)
+                        if (hadValidation) {
+                          setValidationResult(null);
+                          setShowReplaceConfirm(false);
+                          setRecaptchaToken(null);
+                          recaptchaRef.current?.reset();
+                        }
+                      }
                     }}
                     onBlur={handleEmailBlur}
-                    className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                    disabled={!!validationResult?.is_registered}
+                    className={`w-full px-4 py-2 border rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent ${validationResult?.is_registered
+                        ? 'bg-white-pure/5 border-white-pure/10 cursor-not-allowed opacity-70'
+                        : 'bg-white-pure/10 border-white-pure/20'
+                      }`}
                     placeholder="tu@email.com"
                   />
                   {emailError && (
@@ -292,10 +352,35 @@ export default function PaymentProofModal({
                   )}
                 </div>
 
+                {/* reCAPTCHA - Solo mostrar antes de validar */}
+                {!validationResult && recaptchaSiteKey && (
+                  <div ref={recaptchaContainerRef} className="flex flex-col items-center">
+                    <ReCAPTCHA
+                      ref={recaptchaRef}
+                      sitekey={recaptchaSiteKey}
+                      theme="dark"
+                      onChange={(token) => {
+                        setRecaptchaToken(token);
+                        // Limpiar error si existe
+                        if (error && error.includes('reCAPTCHA')) {
+                          setError(null);
+                        }
+                      }}
+                      onExpired={() => {
+                        setRecaptchaToken(null);
+                      }}
+                      onError={() => {
+                        setRecaptchaToken(null);
+                        setError('Error al cargar reCAPTCHA. Por favor, recarga la página.');
+                      }}
+                    />
+                  </div>
+                )}
+
                 {!validationResult && (
                   <button
                     onClick={handleValidate}
-                    disabled={isValidating || !email.trim()}
+                    disabled={isValidating || !email.trim() || (!!recaptchaSiteKey && !recaptchaToken)}
                     className="w-full px-6 py-2 bg-orange-primary hover:bg-red-fire text-white-pure rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {isValidating ? (
