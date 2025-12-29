@@ -107,12 +107,30 @@ export default function PaymentProofModal({
           body: { token: recaptchaToken },
         });
 
-        if (recaptchaError || !data?.valid) {
-          throw new Error(data?.error || 'Error al validar reCAPTCHA');
+        // Manejar errores de la edge function
+        if (recaptchaError) {
+          // Si es un error de red o conexión
+          if (recaptchaError.message?.includes('fetch') || recaptchaError.message?.includes('network')) {
+            throw new Error('No se pudo conectar con el servidor. Por favor, verifica tu conexión e intenta de nuevo.');
+          }
+          // Si es un error de status code
+          if (recaptchaError.message?.includes('status code')) {
+            throw new Error('Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.');
+          }
+          // Error genérico
+          throw new Error(recaptchaError.message || 'Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.');
+        }
+
+        // Verificar si la validación fue exitosa
+        if (!data || !data.valid) {
+          const errorMessage = data?.error || 'No se pudo verificar el reCAPTCHA. Por favor, intenta de nuevo.';
+          throw new Error(errorMessage);
         }
       } catch (recaptchaValidationError: any) {
         console.error('Error validando reCAPTCHA:', recaptchaValidationError);
-        setError(recaptchaValidationError.message || 'Error al validar reCAPTCHA. Por favor, intenta de nuevo.');
+        // Mostrar mensaje amigable al usuario
+        const userMessage = recaptchaValidationError.message || 'Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.';
+        setError(userMessage);
         // Resetear reCAPTCHA
         recaptchaRef.current?.reset();
         setRecaptchaToken(null);
@@ -342,8 +360,8 @@ export default function PaymentProofModal({
                     onBlur={handleEmailBlur}
                     disabled={!!validationResult?.is_registered}
                     className={`w-full px-4 py-2 border rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent ${validationResult?.is_registered
-                        ? 'bg-white-pure/5 border-white-pure/10 cursor-not-allowed opacity-70'
-                        : 'bg-white-pure/10 border-white-pure/20'
+                      ? 'bg-white-pure/5 border-white-pure/10 cursor-not-allowed opacity-70'
+                      : 'bg-white-pure/10 border-white-pure/20'
                       }`}
                     placeholder="tu@email.com"
                   />

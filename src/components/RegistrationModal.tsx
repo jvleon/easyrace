@@ -99,10 +99,11 @@ export default function RegistrationModal({
   // Refs para scroll automático al error
   const errorRef = useRef<HTMLDivElement>(null);
   const modalContentRef = useRef<HTMLDivElement>(null);
-  
+
   // Estados para reCAPTCHA
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null);
   const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || '';
   // Refs para campos con errores (usando un objeto para mapear nombre de campo -> ref)
   const fieldErrorRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -534,6 +535,23 @@ export default function RegistrationModal({
         return newErrors;
       });
     }
+    // Si se cambia el email, limpiar errores de email único
+    if (name === 'email') {
+      // Limpiar error del paso 1
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        if (newErrors.email && (newErrors.email.includes('ya está registrado') || newErrors.email.includes('por otra persona'))) {
+          delete newErrors.email;
+        }
+        return newErrors;
+      });
+      // Limpiar error del paso 2 (siempre, no solo en paso 2)
+      setPairErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors.pair_email;
+        return newErrors;
+      });
+    }
   };
 
   const handlePairChange = (name: string, value: any) => {
@@ -751,8 +769,33 @@ export default function RegistrationModal({
       newErrors.terms = 'Debes aceptar los términos y condiciones para registrarte';
     }
 
+    // Validar email único en paso 1 (competidor 1)
+    if (!isPairCategory || currentStep === 1) {
+      const emailField = fields.find(f => f.name === 'email');
+      if (emailField && formData.email) {
+        // Verificar si hay error de email único ya detectado
+        if (errors.email && errors.email.includes('ya está registrado')) {
+          newErrors.email = errors.email;
+        }
+      }
+    }
+
+    // Validar email único en paso 2 (competidor 2)
+    if (isPairCategory && currentStep === 2) {
+      const emailField = fields.find(f => f.name === 'email');
+      if (emailField && formData.email) {
+        // Verificar si hay error de email único ya detectado
+        if (pairErrors.pair_email) {
+          // Agregar el error a newErrors para que se muestre
+          newErrors.email = pairErrors.pair_email;
+        }
+      }
+    }
+
     setErrors(newErrors);
-    const isValid = Object.keys(newErrors).length === 0;
+    // También verificar pairErrors para el paso 2
+    const hasPairErrors = isPairCategory && currentStep === 2 && Object.keys(pairErrors).length > 0;
+    const isValid = Object.keys(newErrors).length === 0 && !hasPairErrors;
     return isValid;
   };
 
@@ -833,6 +876,48 @@ export default function RegistrationModal({
       const isValid = validateForm();
       if (!isValid) {
         return;
+      }
+
+      // Validar email único antes de avanzar (si hay email)
+      // Esto asegura que se valide incluso si el usuario no hizo onBlur
+      const emailField = fields.find(f => f.name === 'email');
+      if (emailField && formData.email) {
+        // Verificar si hay error de email único existente
+        if (errors.email && errors.email.includes('ya está registrado')) {
+          // No permitir avanzar si el email ya está registrado
+          return;
+        }
+
+        // Validar formato de email primero
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailRegex.test(formData.email)) {
+          // Validar email único de forma asíncrona antes de avanzar
+          try {
+            // Consultar la vista para verificar si el email ya está registrado
+            const { data, error: checkError } = await supabase
+              .from('competitor_email_check')
+              .select('count')
+              .eq('event_id', eventId)
+              .eq('email', formData.email.trim().toLowerCase())
+              .maybeSingle();
+
+            if (checkError) {
+              // Si hay un error, no bloquear el registro, solo loguear
+              console.warn('Error checking email uniqueness (non-blocking):', checkError);
+              // Continuar sin validar email si hay error en la vista
+            } else if (data && data.count > 0) {
+              // Email ya está registrado - mostrar error y no permitir avanzar
+              setErrors((prev) => ({
+                ...prev,
+                email: 'Este correo electrónico ya está registrado en este evento. Solo se permite un registro por correo.',
+              }));
+              return; // No permitir avanzar
+            }
+          } catch (err: any) {
+            console.error('Error validating email uniqueness:', err);
+            // En caso de error, permitir avanzar (no bloquear por error de red)
+          }
+        }
       }
 
       // Guardar datos del competidor 1
@@ -916,6 +1001,99 @@ export default function RegistrationModal({
       return;
     }
 
+    // Si es categoría de parejas y estamos en paso 2, validar email único del segundo competidor antes de registrar
+    if (isPairCategory && currentStep === 2) {
+      const emailField = fields.find(f => f.name === 'email');
+      if (emailField && formData.email) {
+        // Verificar si hay error de email único existente
+        if (pairErrors.pair_email || (errors.email && (errors.email.includes('ya está registrado') || errors.email.includes('por otra persona')))) {
+          // No permitir registrar si el email ya está registrado
+          return;
+        }
+
+        // Validar formato de email primero
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (emailRegex.test(formData.email)) {
+          // Validar email único de forma asíncrona antes de registrar
+          try {
+            // Si es email del segundo competidor en parejas, permitir que sea el mismo que el primero
+            if (competitor1Data && competitor1Data.email) {
+              const firstEmail = competitor1Data.email.trim().toLowerCase();
+              const secondEmail = formData.email.trim().toLowerCase();
+
+              // Si ambos emails son iguales, permitirlo (parejas pueden compartir email)
+              if (firstEmail === secondEmail) {
+                // Limpiar errores si los emails son iguales
+                setPairErrors((prev) => {
+                  const newErrors = { ...prev };
+                  delete newErrors.pair_email;
+                  return newErrors;
+                });
+                setErrors((prev) => {
+                  const newErrors = { ...prev };
+                  if (newErrors.email && newErrors.email.includes('ya está registrado')) {
+                    delete newErrors.email;
+                  }
+                  return newErrors;
+                });
+              } else {
+                // Si son diferentes, validar que el segundo email no esté registrado
+                const { data, error: checkError } = await supabase
+                  .from('competitor_email_check')
+                  .select('count')
+                  .eq('event_id', eventId)
+                  .eq('email', formData.email.trim().toLowerCase())
+                  .maybeSingle();
+
+                if (checkError) {
+                  console.warn('Error checking email uniqueness (non-blocking):', checkError);
+                  // Continuar sin validar email si hay error en la vista
+                } else if (data && data.count > 0) {
+                  // Email ya está registrado - mostrar error y no permitir registrar
+                  setPairErrors((prev) => ({
+                    ...prev,
+                    pair_email: 'Este correo electrónico ya está registrado en este evento por otra persona.',
+                  }));
+                  setErrors((prev) => ({
+                    ...prev,
+                    email: 'Este correo electrónico ya está registrado en este evento por otra persona.',
+                  }));
+                  return; // No permitir registrar
+                }
+              }
+            } else {
+              // Si no hay email del primer competidor, validar normalmente
+              const { data, error: checkError } = await supabase
+                .from('competitor_email_check')
+                .select('count')
+                .eq('event_id', eventId)
+                .eq('email', formData.email.trim().toLowerCase())
+                .maybeSingle();
+
+              if (checkError) {
+                console.warn('Error checking email uniqueness (non-blocking):', checkError);
+                // Continuar sin validar email si hay error en la vista
+              } else if (data && data.count > 0) {
+                // Email ya está registrado - mostrar error y no permitir registrar
+                setPairErrors((prev) => ({
+                  ...prev,
+                  pair_email: 'Este correo electrónico ya está registrado en este evento por otra persona.',
+                }));
+                setErrors((prev) => ({
+                  ...prev,
+                  email: 'Este correo electrónico ya está registrado en este evento por otra persona.',
+                }));
+                return; // No permitir registrar
+              }
+            }
+          } catch (err: any) {
+            console.error('Error validating email uniqueness:', err);
+            // En caso de error, permitir registrar (no bloquear por error de red)
+          }
+        }
+      }
+    }
+
     // Validar reCAPTCHA solo en el paso final (no en paso 1 de parejas)
     if (recaptchaSiteKey && (!isPairCategory || currentStep === 2)) {
       if (!recaptchaToken) {
@@ -925,7 +1103,7 @@ export default function RegistrationModal({
         }));
         // Scroll al reCAPTCHA
         setTimeout(() => {
-          recaptchaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          recaptchaContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
         return;
       }
@@ -936,14 +1114,32 @@ export default function RegistrationModal({
           body: { token: recaptchaToken },
         });
 
-        if (recaptchaError || !data?.valid) {
-          throw new Error(data?.error || 'Error al validar reCAPTCHA');
+        // Manejar errores de la edge function
+        if (recaptchaError) {
+          // Si es un error de red o conexión
+          if (recaptchaError.message?.includes('fetch') || recaptchaError.message?.includes('network')) {
+            throw new Error('No se pudo conectar con el servidor. Por favor, verifica tu conexión e intenta de nuevo.');
+          }
+          // Si es un error de status code
+          if (recaptchaError.message?.includes('status code')) {
+            throw new Error('Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.');
+          }
+          // Error genérico
+          throw new Error(recaptchaError.message || 'Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.');
+        }
+
+        // Verificar si la validación fue exitosa
+        if (!data || !data.valid) {
+          const errorMessage = data?.error || 'No se pudo verificar el reCAPTCHA. Por favor, intenta de nuevo.';
+          throw new Error(errorMessage);
         }
       } catch (recaptchaValidationError: any) {
         console.error('Error validando reCAPTCHA:', recaptchaValidationError);
+        // Mostrar mensaje amigable al usuario
+        const userMessage = recaptchaValidationError.message || 'Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.';
         setErrors((prev) => ({
           ...prev,
-          recaptcha: recaptchaValidationError.message || 'Error al validar reCAPTCHA. Por favor, intenta de nuevo.',
+          recaptcha: userMessage,
         }));
         // Resetear reCAPTCHA
         recaptchaRef.current?.reset();
@@ -1747,7 +1943,25 @@ export default function RegistrationModal({
                                     handleChange(field.name, value);
                                   }
                                 } else {
-                                  handleChange(field.name, e.target.value);
+                                  const newValue = e.target.value;
+                                  handleChange(field.name, newValue);
+                                  // Limpiar error de email único cuando se cambia el email del segundo competidor
+                                  if (isEmailField) {
+                                    // Limpiar ambos errores inmediatamente
+                                    setPairErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      delete newErrors.pair_email;
+                                      return newErrors;
+                                    });
+                                    setErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      // Limpiar error de email si existe (buscar ambos mensajes posibles)
+                                      if (newErrors.email && (newErrors.email.includes('ya está registrado') || newErrors.email.includes('por otra persona'))) {
+                                        delete newErrors.email;
+                                      }
+                                      return newErrors;
+                                    });
+                                  }
                                 }
                               }}
                               onBlur={async (e) => {
@@ -1759,6 +1973,10 @@ export default function RegistrationModal({
                               required={field.required && !isEmailField}
                               className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
                             />
+                          )}
+                          {/* Mostrar errores de email único del paso 2 */}
+                          {isEmailField && pairErrors.pair_email && (
+                            <p className="mt-1 text-sm text-red-fire">{pairErrors.pair_email}</p>
                           )}
                           {errors[field.name] && (
                             <p className="mt-1 text-sm text-red-fire">{errors[field.name]}</p>
@@ -1968,7 +2186,7 @@ export default function RegistrationModal({
 
               {/* reCAPTCHA - Solo mostrar en el paso final (no en paso 1 de parejas) */}
               {recaptchaSiteKey && (!isPairCategory || currentStep === 2) && (
-                <div className="mt-4 mb-4 flex flex-col items-center">
+                <div ref={recaptchaContainerRef} className="mt-4 mb-4 flex flex-col items-center">
                   <ReCAPTCHA
                     ref={recaptchaRef}
                     sitekey={recaptchaSiteKey}
