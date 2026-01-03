@@ -5,11 +5,12 @@ import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
 import '../../styles/global.css';
 
-// Ruta dinámica que genera todas las rutas de eventos en build time
-// Los datos se cargan dinámicamente del lado del cliente
-// Esto permite que el contenido se actualice sin rebuild, pero las rutas se generan en build time
+// Ruta dinámica: generar rutas para eventos existentes + una ruta genérica
+// En desarrollo: las rutas generadas funcionan directamente
+// En producción: el .htaccess redirige todas las rutas a /eventos/dynamic.html
 export async function getStaticPaths() {
   try {
+    // Cargar todos los eventos publicados desde Supabase
     const { data: events, error } = await supabase
       .from('events')
       .select('slug')
@@ -17,42 +18,34 @@ export async function getStaticPaths() {
       .not('name', 'is', null)
       .not('date', 'is', null);
 
-    if (error || !events) {
+    if (error) {
       console.warn('Error loading events for static paths:', error);
-      // Retornar array vacío - la ruta se manejará dinámicamente
-      return [];
     }
 
-    // Registrar rutas para todos los eventos existentes
-    // Con prerender: false, NO se generan archivos estáticos
-    // El contenido se carga dinámicamente en runtime
-    return events.map((event) => ({
+    // Generar rutas para todos los eventos existentes
+    const eventRoutes = events?.map((event) => ({
       params: { slug: event.slug },
-    }));
+    })) || [];
+
+    // Agregar la ruta genérica "dynamic" que usará el .htaccess en producción
+    eventRoutes.push({
+      params: { slug: 'dynamic' },
+    });
+
+    return eventRoutes;
   } catch (error) {
     console.error('Error in getStaticPaths:', error);
-    return [];
+    // Si hay error, solo generar la ruta dynamic
+    return [{ params: { slug: 'dynamic' } }];
   }
 }
 
 // Obtener el slug desde los parámetros
-let { slug } = Astro.params;
+const { slug } = Astro.params;
 
-// Limpiar y validar el slug
-if (slug) {
-  // Remover slash al final si existe
-  slug = slug.replace(/\/$/, '');
-  // Remover espacios en blanco
-  slug = slug.trim();
-  
-  // Si el slug está vacío después de limpiar, redirigir a 404
-  if (!slug || slug === '') {
-    return Astro.redirect('/404', 404);
-  }
-} else {
-  // Si no hay slug, redirigir a 404
-  return Astro.redirect('/404', 404);
-}
+// El slug será "dynamic" en build time
+// El componente EventDetail extraerá el slug real de la URL del navegador en runtime
+const cleanedSlug = slug || 'dynamic';
 ---
 
 <html lang="es">
@@ -77,9 +70,8 @@ if (slug) {
   <body class="min-h-screen bg-black-asphalt flex flex-col">
     <Header />
     <main class="flex-1">
-      <EventDetail slug={slug} client:load />
+      <EventDetail slug={cleanedSlug} client:load />
     </main>
     <Footer />
   </body>
 </html>
-

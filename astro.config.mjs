@@ -5,6 +5,6 @@ import tailwind from '@astrojs/tailwind';
 
 // https://astro.build/config
 export default defineConfig({
-  output: 'static', // Modo estático: genera todas las rutas en build time
+  output: 'static',
   integrations: [react(), tailwind()],
 });

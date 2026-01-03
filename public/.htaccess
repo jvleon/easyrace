@@ -3,17 +3,19 @@
   RewriteEngine On
   RewriteBase /
   
-  # Si la ruta /eventos/* no existe como archivo o directorio,
-  # redirigir a /eventos/dynamic/ que siempre existe
+  # Redirigir todas las rutas /eventos/* a /eventos/dynamic.html
+  # Esto permite que eventos nuevos funcionen sin rebuild
+  # El componente EventDetail extraerá el slug de la URL y manejará la carga dinámica
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule ^eventos/(.+)$ /eventos/dynamic/ [L]
+  RewriteRule ^eventos/(.+)$ /eventos/dynamic.html [L]
   
   # Para todas las demás rutas que no existen, mostrar la página 404 de Astro
   # Esto debe ir después de las reglas específicas de eventos
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteCond %{REQUEST_URI} !^/404\.html$
+  RewriteCond %{REQUEST_URI} !^/eventos/
   RewriteRule ^(.*)$ /404.html [L]
 </IfModule>
 
