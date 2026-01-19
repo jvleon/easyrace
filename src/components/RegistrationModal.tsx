@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import Select from 'react-select';
 import { supabase } from '../lib/supabase';
 import { parseRegistrationConfig, type ParsedField } from '../utils/registrationConfigParser';
 import { uploadIdPhotoToCloudflare, uploadSocialPhotoToCloudflare, uploadPaymentProofToCloudflare } from '../utils/cloudflare';
@@ -1611,28 +1612,77 @@ export default function RegistrationModal({
                                 {field.required && <span className="text-red-fire ml-1">*</span>}
                               </label>
 
-                              <select
-                                value={selectedClubId}
-                                onChange={(e) => {
-                                  setSelectedClubId(e.target.value);
-                                  handleChange('club_id', e.target.value);
+                              <Select
+                                options={[
+                                  { value: 'independent', label: 'Independiente' },
+                                  ...clubs.map((club) => ({
+                                    value: club.id,
+                                    label: club.name,
+                                  }))
+                                ]}
+                                value={selectedClubId ? (
+                                  selectedClubId === 'independent'
+                                    ? { value: 'independent', label: 'Independiente' }
+                                    : clubs.find(c => c.id === selectedClubId)
+                                      ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
+                                      : null
+                                ) : null}
+                                onChange={(option) => {
+                                  const value = option?.value || '';
+                                  setSelectedClubId(value);
+                                  handleChange('club_id', value);
                                   handleChange('club', '');
                                 }}
-                                disabled={clubNotInList}
-                                {...(field.required && !clubNotInList ? { required: true } : {})}
-                                className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                                style={{ backgroundColor: '#212121', color: '#FFF' }}
-                              >
-                                <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
-                                <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
-                                {clubs.map((club) => (
-                                  <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                    {club.name}
-                                  </option>
-                                ))}
-                              </select>
+                                isDisabled={clubNotInList}
+                                isClearable
+                                placeholder="Buscar equipo..."
+                                noOptionsMessage={() => "No se encontraron equipos"}
+                                styles={{
+                                  control: (base, state) => ({
+                                    ...base,
+                                    backgroundColor: '#212121',
+                                    borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
+                                    borderWidth: '1px',
+                                    borderRadius: '0.5rem',
+                                    padding: '0.25rem',
+                                    boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
+                                    '&:hover': {
+                                      borderColor: '#FF5722',
+                                    },
+                                    opacity: clubNotInList ? 0.5 : 1,
+                                    cursor: clubNotInList ? 'not-allowed' : 'default',
+                                  }),
+                                  menu: (base) => ({
+                                    ...base,
+                                    backgroundColor: '#212121',
+                                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                                    borderRadius: '0.5rem',
+                                  }),
+                                  option: (base, state) => ({
+                                    ...base,
+                                    backgroundColor: state.isFocused ? '#FF5722' : '#212121',
+                                    color: '#FFF',
+                                    cursor: 'pointer',
+                                    '&:active': {
+                                      backgroundColor: '#E64A19',
+                                    },
+                                  }),
+                                  singleValue: (base) => ({
+                                    ...base,
+                                    color: '#FFF',
+                                  }),
+                                  input: (base) => ({
+                                    ...base,
+                                    color: '#FFF',
+                                  }),
+                                  placeholder: (base) => ({
+                                    ...base,
+                                    color: 'rgba(255, 255, 255, 0.5)',
+                                  }),
+                                }}
+                              />
 
-                              <label className="flex items-center cursor-pointer">
+                              <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
                                 <input
                                   type="checkbox"
                                   checked={clubNotInList}
@@ -1655,9 +1705,9 @@ export default function RegistrationModal({
                                       handleChange('club', '');
                                     }
                                   }}
-                                  className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                                  className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
                                 />
-                                <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                                <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
                               </label>
 
                               {clubNotInList && (
@@ -1707,28 +1757,77 @@ export default function RegistrationModal({
                             {field.label}
                           </label>
 
-                          <select
-                            value={selectedClubId}
-                            onChange={(e) => {
-                              setSelectedClubId(e.target.value);
-                              handleChange('club_id', e.target.value);
+                          <Select
+                            options={[
+                              { value: 'independent', label: 'Independiente' },
+                              ...clubs.map((club) => ({
+                                value: club.id,
+                                label: club.name,
+                              }))
+                            ]}
+                            value={selectedClubId ? (
+                              selectedClubId === 'independent'
+                                ? { value: 'independent', label: 'Independiente' }
+                                : clubs.find(c => c.id === selectedClubId)
+                                  ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
+                                  : null
+                            ) : null}
+                            onChange={(option) => {
+                              const value = option?.value || '';
+                              setSelectedClubId(value);
+                              handleChange('club_id', value);
                               handleChange('club', '');
                             }}
-                            disabled={clubNotInList}
-                            {...(field.required && !clubNotInList ? { required: true } : {})}
-                            className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                            style={{ backgroundColor: '#212121', color: '#FFF' }}
-                          >
-                            <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo (opcional)</option>
-                            <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
-                            {clubs.map((club) => (
-                              <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                {club.name}
-                              </option>
-                            ))}
-                          </select>
+                            isDisabled={clubNotInList}
+                            isClearable
+                            placeholder="Buscar equipo (opcional)..."
+                            noOptionsMessage={() => "No se encontraron equipos"}
+                            styles={{
+                              control: (base, state) => ({
+                                ...base,
+                                backgroundColor: '#212121',
+                                borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
+                                borderWidth: '1px',
+                                borderRadius: '0.5rem',
+                                padding: '0.25rem',
+                                boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
+                                '&:hover': {
+                                  borderColor: '#FF5722',
+                                },
+                                opacity: clubNotInList ? 0.5 : 1,
+                                cursor: clubNotInList ? 'not-allowed' : 'default',
+                              }),
+                              menu: (base) => ({
+                                ...base,
+                                backgroundColor: '#212121',
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                borderRadius: '0.5rem',
+                              }),
+                              option: (base, state) => ({
+                                ...base,
+                                backgroundColor: state.isFocused ? '#FF5722' : '#212121',
+                                color: '#FFF',
+                                cursor: 'pointer',
+                                '&:active': {
+                                  backgroundColor: '#E64A19',
+                                },
+                              }),
+                              singleValue: (base) => ({
+                                ...base,
+                                color: '#FFF',
+                              }),
+                              input: (base) => ({
+                                ...base,
+                                color: '#FFF',
+                              }),
+                              placeholder: (base) => ({
+                                ...base,
+                                color: 'rgba(255, 255, 255, 0.5)',
+                              }),
+                            }}
+                          />
 
-                          <label className="flex items-center cursor-pointer">
+                          <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
                             <input
                               type="checkbox"
                               checked={clubNotInList}
@@ -1751,9 +1850,9 @@ export default function RegistrationModal({
                                   handleChange('club', '');
                                 }
                               }}
-                              className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                              className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
                             />
-                            <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                            <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
                           </label>
 
                           {clubNotInList && (
@@ -1813,28 +1912,77 @@ export default function RegistrationModal({
                               {field.required && <span className="text-red-fire ml-1">*</span>}
                             </label>
 
-                            <select
-                              value={selectedClubId}
-                              onChange={(e) => {
-                                setSelectedClubId(e.target.value);
-                                handleChange('club_id', e.target.value);
+                            <Select
+                              options={[
+                                { value: 'independent', label: 'Independiente' },
+                                ...clubs.map((club) => ({
+                                  value: club.id,
+                                  label: club.name,
+                                }))
+                              ]}
+                              value={selectedClubId ? (
+                                selectedClubId === 'independent'
+                                  ? { value: 'independent', label: 'Independiente' }
+                                  : clubs.find(c => c.id === selectedClubId)
+                                    ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
+                                    : null
+                              ) : null}
+                              onChange={(option) => {
+                                const value = option?.value || '';
+                                setSelectedClubId(value);
+                                handleChange('club_id', value);
                                 handleChange('club', '');
                               }}
-                              disabled={clubNotInList}
-                              required={field.required && !clubNotInList}
-                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                              style={{ backgroundColor: '#212121', color: '#FFF' }}
-                            >
-                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
-                              <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
-                              {clubs.map((club) => (
-                                <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                  {club.name}
-                                </option>
-                              ))}
-                            </select>
+                              isDisabled={clubNotInList}
+                              isClearable
+                              placeholder="Buscar equipo..."
+                              noOptionsMessage={() => "No se encontraron equipos"}
+                              styles={{
+                                control: (base, state) => ({
+                                  ...base,
+                                  backgroundColor: '#212121',
+                                  borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
+                                  borderWidth: '1px',
+                                  borderRadius: '0.5rem',
+                                  padding: '0.25rem',
+                                  boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
+                                  '&:hover': {
+                                    borderColor: '#FF5722',
+                                  },
+                                  opacity: clubNotInList ? 0.5 : 1,
+                                  cursor: clubNotInList ? 'not-allowed' : 'default',
+                                }),
+                                menu: (base) => ({
+                                  ...base,
+                                  backgroundColor: '#212121',
+                                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                                  borderRadius: '0.5rem',
+                                }),
+                                option: (base, state) => ({
+                                  ...base,
+                                  backgroundColor: state.isFocused ? '#FF5722' : '#212121',
+                                  color: '#FFF',
+                                  cursor: 'pointer',
+                                  '&:active': {
+                                    backgroundColor: '#E64A19',
+                                  },
+                                }),
+                                singleValue: (base) => ({
+                                  ...base,
+                                  color: '#FFF',
+                                }),
+                                input: (base) => ({
+                                  ...base,
+                                  color: '#FFF',
+                                }),
+                                placeholder: (base) => ({
+                                  ...base,
+                                  color: 'rgba(255, 255, 255, 0.5)',
+                                }),
+                              }}
+                            />
 
-                            <label className="flex items-center cursor-pointer mt-2">
+                            <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
                               <input
                                 type="checkbox"
                                 checked={clubNotInList}
@@ -1854,9 +2002,9 @@ export default function RegistrationModal({
                                     handleChange('club', '');
                                   }
                                 }}
-                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
                               />
-                              <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                              <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
                             </label>
 
                             {clubNotInList && (
@@ -1999,27 +2147,77 @@ export default function RegistrationModal({
                               {field.label}
                             </label>
 
-                            <select
-                              value={selectedClubId}
-                              onChange={(e) => {
-                                setSelectedClubId(e.target.value);
-                                handleChange('club_id', e.target.value);
+                            <Select
+                              options={[
+                                { value: 'independent', label: 'Independiente' },
+                                ...clubs.map((club) => ({
+                                  value: club.id,
+                                  label: club.name,
+                                }))
+                              ]}
+                              value={selectedClubId ? (
+                                selectedClubId === 'independent'
+                                  ? { value: 'independent', label: 'Independiente' }
+                                  : clubs.find(c => c.id === selectedClubId)
+                                    ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
+                                    : null
+                              ) : null}
+                              onChange={(option) => {
+                                const value = option?.value || '';
+                                setSelectedClubId(value);
+                                handleChange('club_id', value);
                                 handleChange('club', '');
                               }}
-                              disabled={clubNotInList}
-                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                              style={{ backgroundColor: '#212121', color: '#FFF' }}
-                            >
-                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona un equipo</option>
-                              <option value="independent" style={{ backgroundColor: '#212121', color: '#FFF' }}>Independiente</option>
-                              {clubs.map((club) => (
-                                <option key={club.id} value={club.id} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                  {club.name}
-                                </option>
-                              ))}
-                            </select>
+                              isDisabled={clubNotInList}
+                              isClearable
+                              placeholder="Buscar equipo..."
+                              noOptionsMessage={() => "No se encontraron equipos"}
+                              styles={{
+                                control: (base, state) => ({
+                                  ...base,
+                                  backgroundColor: '#212121',
+                                  borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
+                                  borderWidth: '1px',
+                                  borderRadius: '0.5rem',
+                                  padding: '0.25rem',
+                                  boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
+                                  '&:hover': {
+                                    borderColor: '#FF5722',
+                                  },
+                                  opacity: clubNotInList ? 0.5 : 1,
+                                  cursor: clubNotInList ? 'not-allowed' : 'default',
+                                }),
+                                menu: (base) => ({
+                                  ...base,
+                                  backgroundColor: '#212121',
+                                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                                  borderRadius: '0.5rem',
+                                }),
+                                option: (base, state) => ({
+                                  ...base,
+                                  backgroundColor: state.isFocused ? '#FF5722' : '#212121',
+                                  color: '#FFF',
+                                  cursor: 'pointer',
+                                  '&:active': {
+                                    backgroundColor: '#E64A19',
+                                  },
+                                }),
+                                singleValue: (base) => ({
+                                  ...base,
+                                  color: '#FFF',
+                                }),
+                                input: (base) => ({
+                                  ...base,
+                                  color: '#FFF',
+                                }),
+                                placeholder: (base) => ({
+                                  ...base,
+                                  color: 'rgba(255, 255, 255, 0.5)',
+                                }),
+                              }}
+                            />
 
-                            <label className="flex items-center cursor-pointer mt-2">
+                            <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
                               <input
                                 type="checkbox"
                                 checked={clubNotInList}
@@ -2039,9 +2237,9 @@ export default function RegistrationModal({
                                     handleChange('club', '');
                                   }
                                 }}
-                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-white-pure/20 rounded focus:ring-orange-primary focus:ring-2"
+                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
                               />
-                              <span className="ml-3 text-white-pure text-sm">Mi club no está en la lista</span>
+                              <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
                             </label>
 
                             {clubNotInList && (

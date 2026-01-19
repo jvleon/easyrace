@@ -138,7 +138,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
             if (typeof window !== 'undefined') {
               // Buscar todos los contenedores de Strava en el DOM
               const stravaContainers = document.querySelectorAll('.strava-embed-container');
-
+              
               if (stravaContainers.length > 0) {
                 // Si el script ya está cargado, inicializar
                 if ((window as any).StravaEmbeds) {
@@ -152,10 +152,10 @@ export default function EventDetail({ slug }: EventDetailProps) {
             }
           }, 500);
         });
-
+        
         return () => cancelAnimationFrame(frame2);
       });
-
+      
       return () => cancelAnimationFrame(frame1);
     }
   }, [distanceGroups]);
@@ -399,7 +399,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
 
       <div className="container mx-auto px-4 pt-6 pb-8 md:pt-8 md:pb-12">
         <div className="max-w-4xl mx-auto">
-          <header
+          <header 
             {...(!isUpcoming || !event.date ? { id: 'inicio' } : {})}
             className={`mb-8 ${!isUpcoming || !event.date ? 'scroll-mt-32' : ''}`}
           >
@@ -416,7 +416,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
                 Ubicación: {event.location}
               </p>
             )}
-
+            
             {/* Redes sociales del evento */}
             {(event.facebook_url || event.instagram_url || event.whatsapp_url) && (
               <div className="flex gap-4 mt-4">

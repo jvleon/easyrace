@@ -3,12 +3,12 @@
   RewriteEngine On
   RewriteBase /
   
-  # Redirigir todas las rutas /eventos/* a /eventos/dynamic.html
+  # Redirigir todas las rutas /eventos/* a /eventos/dynamic/
   # Esto permite que eventos nuevos funcionen sin rebuild
   # El componente EventDetail extraerá el slug de la URL y manejará la carga dinámica
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule ^eventos/(.+)$ /eventos/dynamic.html [L]
+  RewriteRule ^eventos/(.+)$ /eventos/dynamic/ [L]
   
   # Para todas las demás rutas que no existen, mostrar la página 404 de Astro
   # Esto debe ir después de las reglas específicas de eventos
@@ -21,5 +21,3 @@
 
 # Configurar ErrorDocument para mostrar la página 404 de Astro
 ErrorDocument 404 /404.html
-
-
