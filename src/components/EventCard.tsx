@@ -51,9 +51,9 @@ export default function EventCard({ name, slug, date, location, bannerUrl, mobil
       <div className="p-4">
         <h3 className="text-xl font-bold text-white-pure mb-2 line-clamp-2">{name}</h3>
         <div className="space-y-1">
-          <div className="flex items-center text-white-pure/70 text-sm">
-            <FiCalendar className="mr-2" />
-            <span>{formatDateShort(date)}</span>
+        <div className="flex items-center text-white-pure/70 text-sm">
+          <FiCalendar className="mr-2" />
+          <span>{formatDateShort(date)}</span>
           </div>
           {location && (
             <div className="flex items-center text-white-pure/70 text-sm">

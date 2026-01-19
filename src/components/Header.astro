@@ -1,18 +1,37 @@
 ---
 import logoHorizontal from '../assets/logo_horizontal.png';
+import { isDemoSubdomainFromHostname } from '../utils/subdomain';
+
+const requestUrl = Astro.request?.url ?? 'https://localhost/';
+const { hostname, pathname } = new URL(requestUrl);
+const isDemo = isDemoSubdomainFromHostname(hostname);
+const isEventPage = pathname.startsWith('/eventos/');
+const disableLogoLink = isDemo && isEventPage;
 ---
 
 <header class="bg-white-pure shadow-md sticky top-0 z-50" style="scroll-margin-top: 0;">
   <nav class="container mx-auto px-4 py-4">
     <div class="flex items-center justify-between">
       <!-- Logo -->
-      <a href="/" class="flex items-center hover:opacity-80 transition-opacity">
-        <img
-          src={logoHorizontal.src}
-          alt="EasyRace Logo"
-          class="w-[180px] h-auto"
-        />
-      </a>
+      {
+        disableLogoLink ? (
+          <span class="flex items-center">
+            <img
+              src={logoHorizontal.src}
+              alt="EasyRace Logo"
+              class="w-[180px] h-auto"
+            />
+          </span>
+        ) : (
+          <a href="/" class="flex items-center hover:opacity-80 transition-opacity">
+            <img
+              src={logoHorizontal.src}
+              alt="EasyRace Logo"
+              class="w-[180px] h-auto"
+            />
+          </a>
+        )
+      }
 
       <!-- Botón de Login -->
       <a

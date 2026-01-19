@@ -1,49 +1,43 @@
 ---
 import { supabase } from '../../lib/supabase';
 import EventDetail from '../../components/EventDetail';
+import SentryInit from '../../components/SentryInit';
 import Header from '../../components/Header.astro';
 import Footer from '../../components/Footer.astro';
 import '../../styles/global.css';
 
-// Ruta dinámica: generar rutas para eventos existentes + una ruta genérica
-// En desarrollo: las rutas generadas funcionan directamente
-// En producción: el .htaccess redirige todas las rutas a /eventos/dynamic.html
+// Generar solo la página "dynamic" en build time
+// Pero en desarrollo, fetchear todos los eventos para que las rutas funcionen
 export async function getStaticPaths() {
+  // Siempre retornar la ruta "dynamic" para producción
+  const paths = [{ params: { slug: 'dynamic' } }];
+  
+  // En desarrollo, también generar rutas para eventos existentes
+  // Esto permite que /eventos/[slug] funcione en localhost
+  if (import.meta.env.DEV) {
   try {
-    // Cargar todos los eventos publicados desde Supabase
-    const { data: events, error } = await supabase
+      const { data: events } = await supabase
       .from('events')
       .select('slug')
       .in('status', ['published', 'completed'])
-      .not('name', 'is', null)
-      .not('date', 'is', null);
+        .not('slug', 'is', null);
 
-    if (error) {
-      console.warn('Error loading events for static paths:', error);
+      if (events) {
+        events.forEach(event => {
+          paths.push({ params: { slug: event.slug } });
+        });
+      }
+    } catch (error) {
+      console.error('Error loading events for dev paths:', error);
     }
-
-    // Generar rutas para todos los eventos existentes
-    const eventRoutes = events?.map((event) => ({
-      params: { slug: event.slug },
-    })) || [];
-
-    // Agregar la ruta genérica "dynamic" que usará el .htaccess en producción
-    eventRoutes.push({
-      params: { slug: 'dynamic' },
-    });
-
-    return eventRoutes;
-  } catch (error) {
-    console.error('Error in getStaticPaths:', error);
-    // Si hay error, solo generar la ruta dynamic
-    return [{ params: { slug: 'dynamic' } }];
   }
+
+    return paths;
 }
 
 // Obtener el slug desde los parámetros
 const { slug } = Astro.params;
 
-// El slug será "dynamic" en build time
 // El componente EventDetail extraerá el slug real de la URL del navegador en runtime
 const cleanedSlug = slug || 'dynamic';
 ---
@@ -68,6 +62,7 @@ const cleanedSlug = slug || 'dynamic';
     </script>
   </head>
   <body class="min-h-screen bg-black-asphalt flex flex-col">
+    <SentryInit client:load />
     <Header />
     <main class="flex-1">
       <EventDetail slug={cleanedSlug} client:load />
