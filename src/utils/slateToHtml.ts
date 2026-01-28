@@ -7,22 +7,31 @@ interface SlateTextNode {
   fontSize?: string; // "12px", "14px", "18px", "24px", "32px"
 }
 
+interface SlateLinkNode {
+  type: 'link';
+  url: string;
+  children: SlateTextNode[];
+}
+
+interface SlateImageNode {
+  type: 'image';
+  url: string;
+  alt?: string;
+  children: [{ text: '' }];
+}
+
+type SlateChild = SlateTextNode | SlateLinkNode | SlateImageNode | {
+  type: string;
+  align?: 'left' | 'center' | 'right' | 'justify';
+  children: SlateChild[];
+};
+
 interface SlateNode {
   type: string;
   align?: 'left' | 'center' | 'right' | 'justify';
-  children: Array<SlateTextNode | {
-    type: string;
-    align?: 'left' | 'center' | 'right' | 'justify';
-    children: Array<SlateTextNode | {
-      type: string;
-      align?: 'left' | 'center' | 'right' | 'justify';
-      children: Array<SlateTextNode | {
-        type: string;
-        align?: 'left' | 'center' | 'right' | 'justify';
-        children: Array<SlateTextNode>;
-      }>;
-    }>;
-  }>;
+  url?: string;
+  alt?: string;
+  children: SlateChild[];
 }
 
 function escapeHtml(text: string): string {
@@ -58,6 +67,40 @@ function renderTextNode(child: SlateTextNode): string {
   return html;
 }
 
+function renderLinkNode(node: SlateLinkNode): string {
+  const content = node.children
+    .map((child) => renderTextNode(child))
+    .join('');
+  const safeUrl = escapeHtml(node.url);
+  return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline">${content}</a>`;
+}
+
+function renderImageNode(node: SlateImageNode): string {
+  const safeUrl = escapeHtml(node.url);
+  const safeAlt = escapeHtml(node.alt || '');
+  return `<div class="my-4"><img src="${safeUrl}" alt="${safeAlt}" class="max-w-full h-auto rounded-lg" style="max-height: 500px; object-fit: contain;" loading="lazy" /></div>`;
+}
+
+// Renderiza un child que puede ser texto, link o imagen
+function renderChild(child: SlateChild): string {
+  // Si es un link
+  if (typeof child === 'object' && 'type' in child && child.type === 'link') {
+    return renderLinkNode(child as SlateLinkNode);
+  }
+  
+  // Si es una imagen
+  if (typeof child === 'object' && 'type' in child && child.type === 'image') {
+    return renderImageNode(child as SlateImageNode);
+  }
+  
+  // Si es texto
+  if (typeof child === 'object' && 'text' in child) {
+    return renderTextNode(child as SlateTextNode);
+  }
+  
+  return '';
+}
+
 function renderSlateNode(node: SlateNode): string {
   const alignClass = {
     left: 'text-left',
@@ -65,6 +108,11 @@ function renderSlateNode(node: SlateNode): string {
     right: 'text-right',
     justify: 'text-justify',
   }[node.align || 'left'];
+
+  // Renderizar imágenes (nodo de nivel superior)
+  if (node.type === 'image') {
+    return renderImageNode(node as unknown as SlateImageNode);
+  }
 
   // Renderizar tablas
   if (node.type === 'table') {
@@ -92,12 +140,7 @@ function renderSlateNode(node: SlateNode): string {
                       }[paragraph.align || 'left'];
                       
                       const textContent = paragraph.children
-                        .map((child: any) => {
-                          if (typeof child === 'object' && 'text' in child) {
-                            return renderTextNode(child as SlateTextNode);
-                          }
-                          return '';
-                        })
+                        .map((child: any) => renderChild(child))
                         .join('');
                       
                       return `<p class="${paraAlign}">${textContent}</p>`;
@@ -130,12 +173,7 @@ function renderSlateNode(node: SlateNode): string {
       .map((item: any) => {
         if (item.type === 'list-item' && item.children) {
           const content = item.children
-            .map((child: any) => {
-              if (typeof child === 'object' && 'text' in child) {
-                return renderTextNode(child as SlateTextNode);
-              }
-              return '';
-            })
+            .map((child: any) => renderChild(child))
             .join('');
           return `<li class="my-2">${content}</li>`;
         }
@@ -149,12 +187,7 @@ function renderSlateNode(node: SlateNode): string {
   // Renderizar párrafos
   if (node.type === 'paragraph') {
     const content = node.children
-      .map((child: any) => {
-        if (typeof child === 'object' && 'text' in child) {
-          return renderTextNode(child as SlateTextNode);
-        }
-        return '';
-      })
+      .map((child: any) => renderChild(child))
       .join('');
     return `<p class="my-4 ${alignClass}">${content}</p>`;
   }
