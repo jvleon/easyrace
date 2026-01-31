@@ -1,37 +1,18 @@
 ---
 import logoHorizontal from '../assets/logo_horizontal.png';
-import { isDemoSubdomainFromHostname } from '../utils/subdomain';
-
-const requestUrl = Astro.request?.url ?? 'https://localhost/';
-const { hostname, pathname } = new URL(requestUrl);
-const isDemo = isDemoSubdomainFromHostname(hostname);
-const isEventPage = pathname.startsWith('/eventos/');
-const disableLogoLink = isDemo && isEventPage;
 ---
 
 <header class="bg-white-pure shadow-md sticky top-0 z-50" style="scroll-margin-top: 0;">
   <nav class="container mx-auto px-4 py-4">
     <div class="flex items-center justify-between">
-      <!-- Logo -->
-      {
-        disableLogoLink ? (
-          <span class="flex items-center">
-            <img
-              src={logoHorizontal.src}
-              alt="EasyRace Logo"
-              class="w-[180px] h-auto"
-            />
-          </span>
-        ) : (
-          <a href="/" class="flex items-center hover:opacity-80 transition-opacity">
-            <img
-              src={logoHorizontal.src}
-              alt="EasyRace Logo"
-              class="w-[180px] h-auto"
-            />
-          </a>
-        )
-      }
+      <!-- Logo: siempre renderiza como link, el script del cliente lo deshabilita en demo/localhost + página de evento -->
+      <a id="logo-link" href="/" class="flex items-center hover:opacity-80 transition-opacity">
+        <img
+          src={logoHorizontal.src}
+          alt="EasyRace Logo"
+          class="w-[180px] h-auto"
+        />
+      </a>
 
       <!-- Botón de Login -->
       <a
@@ -60,4 +41,36 @@ const disableLogoLink = isDemo && isEventPage;
     </div>
   </nav>
 </header>
+
+<script>
+  // Deshabilitar el link del logo solo en demo/localhost cuando estamos en página de evento
+  function shouldDisableLogoLink(): boolean {
+    const hostname = window.location.hostname;
+    const pathname = window.location.pathname;
+    
+    const isDemo = 
+      hostname.startsWith('demo.') ||
+      hostname === 'demo.easyrace.com.mx' ||
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1';
+    
+    const isEventPage = pathname.startsWith('/eventos/');
+    
+    return isDemo && isEventPage;
+  }
+
+  // Ejecutar cuando el DOM esté listo
+  document.addEventListener('DOMContentLoaded', () => {
+    if (shouldDisableLogoLink()) {
+      const logoLink = document.getElementById('logo-link');
+      if (logoLink) {
+        // Crear un span con el mismo contenido y clases
+        const span = document.createElement('span');
+        span.className = 'flex items-center';
+        span.innerHTML = logoLink.innerHTML;
+        logoLink.replaceWith(span);
+      }
+    }
+  });
+</script>
 
