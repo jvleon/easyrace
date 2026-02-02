@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import Select from 'react-select';
 import { supabase } from '../lib/supabase';
-import { parseRegistrationConfig, type ParsedField, isClubFieldEnabled, isClubFieldRequired, isClubNotInListEnabled } from '../utils/registrationConfigParser';
-import { uploadIdPhotoToCloudflare, uploadSocialPhotoToCloudflare, uploadPaymentProofToCloudflare } from '../utils/cloudflare';
+import { parseRegistrationConfig, type ParsedField, isClubFieldEnabled, isClubFieldRequired, isClubNotInListEnabled, isExistingClubPhotoEnabled, isExistingClubPhotoRequired } from '../utils/registrationConfigParser';
+import { uploadIdPhotoToCloudflare, uploadSocialPhotoToCloudflare, uploadPaymentProofToCloudflare, uploadClubLogoToCloudflare, uploadExistingClubPhotoToCloudflare } from '../utils/cloudflare';
 import { validateEmailNotTemporary } from '../utils/emailValidation';
+import { MEXICAN_STATES, checkClubExists, normalizeClubName } from '../utils/clubValidation';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader } from 'react-icons/fi';
 import ReCAPTCHA from 'react-google-recaptcha';
 
@@ -39,6 +40,8 @@ interface KitSize {
 interface Club {
   id: string;
   name: string;
+  logo_url?: string | null;
+  status?: string | null;
 }
 
 interface EventPricing {
@@ -84,6 +87,13 @@ export default function RegistrationModal({
   const [clubNotInList, setClubNotInList] = useState<boolean>(false);
   const [selectedClubId, setSelectedClubId] = useState<string>('');
   const [manualClubName, setManualClubName] = useState<string>('');
+  // Estados para registro de nuevo club
+  const [newClubCity, setNewClubCity] = useState<string>('');
+  const [newClubState, setNewClubState] = useState<string>('');
+  const [newClubLogo, setNewClubLogo] = useState<File | null>(null);
+  const [clubDuplicateError, setClubDuplicateError] = useState<string>('');
+  // Estado para foto de club existente sin logo
+  const [existingClubPhoto, setExistingClubPhoto] = useState<File | null>(null);
   const [selectedGender, setSelectedGender] = useState<string>(''); // 'male' o 'female'
   const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
   const [kits, setKits] = useState<Kit[]>([]);
@@ -228,6 +238,11 @@ export default function RegistrationModal({
       setClubNotInList(false);
       setSelectedClubId('');
       setManualClubName('');
+      setNewClubCity('');
+      setNewClubState('');
+      setNewClubLogo(null);
+      setClubDuplicateError('');
+      setExistingClubPhoto(null);
       setSelectedGender('');
       setAcceptedTerms(false);
       setSelectedKitId('');
@@ -528,7 +543,9 @@ export default function RegistrationModal({
             club_id,
             clubs!inner (
               id,
-              name
+              name,
+              logo_url,
+              status
             )
           `)
           .eq('sport_type_id', sportTypeId);
@@ -538,34 +555,42 @@ export default function RegistrationModal({
         }
 
         if (filteredClubs && filteredClubs.length > 0) {
-          // Extraer clubs del resultado y ordenar por nombre
+          // Extraer clubs del resultado, filtrar por status aprobado (defensivo), y ordenar por nombre
           clubsData = filteredClubs
             .map((cs: any) => cs.clubs)
             .filter(Boolean)
+            // Filtrado defensivo: si no tiene status o es 'approved', mostrar
+            .filter((club: Club) => !('status' in club) || club.status === 'approved' || club.status === null)
             .sort((a: Club, b: Club) => a.name.localeCompare(b.name));
         } else {
           // Fallback: si no hay matches, carga todos los clubs para no dejar el selector vacío
           const { data: allClubs, error: allClubsError } = await supabase
             .from('clubs')
-            .select('id, name')
+            .select('id, name, logo_url, status')
             .order('name');
 
           if (allClubsError) {
             console.error('Error fetching all clubs fallback:', allClubsError);
           }
-          clubsData = allClubs || [];
+          // Filtrado defensivo: si no tiene status o es 'approved', mostrar
+          clubsData = (allClubs || []).filter((club: Club) => 
+            !('status' in club) || club.status === 'approved' || club.status === null
+          );
         }
       } else {
         // Si no hay deporte principal, mostrar todos los clubs
         const { data: allClubs, error: allClubsError } = await supabase
           .from('clubs')
-          .select('id, name')
+          .select('id, name, logo_url, status')
           .order('name');
 
         if (allClubsError) {
           console.error('Error fetching all clubs:', allClubsError);
         }
-        clubsData = allClubs || [];
+        // Filtrado defensivo: si no tiene status o es 'approved', mostrar
+        clubsData = (allClubs || []).filter((club: Club) => 
+          !('status' in club) || club.status === 'approved' || club.status === null
+        );
       }
 
       setClubs(clubsData);
@@ -1241,11 +1266,84 @@ export default function RegistrationModal({
           competitorData.club_id = null;
         } else {
           competitorData.club_id = sourceSelectedClubId;
+          
+          // Si hay foto de club existente sin logo, subirla y actualizar el club
+          if (existingClubPhoto) {
+            try {
+              const clubPhotoUrl = await uploadExistingClubPhotoToCloudflare(
+                existingClubPhoto,
+                sourceSelectedClubId,
+                eventSlug,
+                eventId
+              );
+              // Actualizar el logo del club existente (defensivo, puede fallar si columna no existe)
+              await supabase
+                .from('clubs')
+                .update({ logo_url: clubPhotoUrl })
+                .eq('id', sourceSelectedClubId);
+            } catch (uploadError) {
+              console.warn('No se pudo subir la foto del club existente:', uploadError);
+              // No bloquear el registro por este error
+            }
+          }
         }
       } else if (sourceClubNotInList && sourceManualClubName && sourceManualClubName.trim()) {
-        // Si el checkbox SÍ está marcado, usar el nombre manual
+        // Si el checkbox SÍ está marcado, guardar el nombre como club_text (NO club_id)
         competitorData.club = sourceManualClubName.trim();
         competitorData.club_id = null;
+        
+        // Intentar crear un club pendiente para aprobación futura (defensivo)
+        try {
+          let newClubLogoUrl: string | null = null;
+          
+          // Subir logo si se proporcionó
+          if (newClubLogo) {
+            try {
+              newClubLogoUrl = await uploadClubLogoToCloudflare(
+                newClubLogo,
+                sourceManualClubName.trim(),
+                eventSlug,
+                eventId
+              );
+            } catch (logoError) {
+              console.warn('No se pudo subir el logo del nuevo club:', logoError);
+            }
+          }
+          
+          // Crear el club pendiente (defensivo - puede fallar si columnas no existen)
+          const newClubData: Record<string, any> = {
+            name: sourceManualClubName.trim(),
+            city: newClubCity || null,
+            status: 'pending',
+            logo_url: newClubLogoUrl,
+          };
+          
+          // Agregar state si está disponible
+          if (newClubState) {
+            newClubData.state = newClubState;
+          }
+          
+          const { data: createdClub, error: clubError } = await supabase
+            .from('clubs')
+            .insert(newClubData)
+            .select('id')
+            .single();
+          
+          if (!clubError && createdClub) {
+            // Agregar el deporte al club creado
+            if (sportTypeId) {
+              await supabase
+                .from('club_sports')
+                .insert({
+                  club_id: createdClub.id,
+                  sport_type_id: sportTypeId,
+                });
+            }
+          }
+        } catch (clubCreateError) {
+          console.warn('No se pudo crear el club pendiente (columnas pueden no existir):', clubCreateError);
+          // No bloquear el registro - el competidor se guarda con club_text normalmente
+        }
       }
 
       // Formatear teléfonos (solo dígitos)
@@ -1426,7 +1524,18 @@ export default function RegistrationModal({
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
+        <form onSubmit={handleSubmit} className="p-6 relative">
+          {/* Overlay de carga mientras se procesa el registro */}
+          {submitting && (
+            <div className="absolute inset-0 bg-black-asphalt/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-b-2xl">
+              <FiLoader className="animate-spin text-orange-primary mb-4" size={48} />
+              <p className="text-white-pure text-lg font-semibold">
+                {isPairCategory && currentStep === 1 ? 'Guardando datos...' : 'Procesando registro...'}
+              </p>
+              <p className="text-gray-400 text-sm mt-2">Por favor espera, no cierres esta ventana</p>
+            </div>
+          )}
+
           {success ? (
             <div className="text-center py-8">
               <FiCheckCircle className="mx-auto text-green-500 mb-4" size={48} />
@@ -1735,13 +1844,18 @@ export default function RegistrationModal({
                               delete newErrors.club;
                               return newErrors;
                             });
+                            setClubDuplicateError('');
                             if (checked) {
                               // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
                               setSelectedClubId('');
                               handleChange('club_id', '');
+                              setExistingClubPhoto(null);
                             } else {
-                              // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
+                              // Al desmarcar: habilitar select, limpiar datos de nuevo club
                               setManualClubName('');
+                              setNewClubCity('');
+                              setNewClubState('');
+                              setNewClubLogo(null);
                               handleChange('club', '');
                             }
                           }}
@@ -1752,30 +1866,149 @@ export default function RegistrationModal({
                     )}
 
                     {clubNotInList && (
-                      <input
-                        type="text"
-                        value={manualClubName}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setManualClubName(value);
-                          handleChange('club', value);
-                          handleChange('club_id', '');
-                          // Limpiar error de validación cuando el usuario escribe
-                          if (errors.club) {
-                            setErrors((prev) => {
-                              const newErrors = { ...prev };
-                              delete newErrors.club;
-                              return newErrors;
-                            });
-                          }
-                        }}
-                        placeholder="Escribe el nombre del equipo"
-                        {...(clubFieldRequired && clubNotInList ? { required: true } : {})}
-                        className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                      />
+                      <div className="space-y-3 mt-3 p-4 bg-white-pure/5 rounded-lg border border-white-pure/20">
+                        <p className="text-sm text-gray-400 mb-2">Registra tu club para que otros competidores puedan encontrarlo en el futuro.</p>
+                        
+                        {/* Nombre del club */}
+                        <input
+                          type="text"
+                          value={manualClubName}
+                          onChange={async (e) => {
+                            const value = e.target.value;
+                            setManualClubName(value);
+                            handleChange('club', value);
+                            handleChange('club_id', '');
+                            setClubDuplicateError('');
+                            // Limpiar error de validación cuando el usuario escribe
+                            if (errors.club) {
+                              setErrors((prev) => {
+                                const newErrors = { ...prev };
+                                delete newErrors.club;
+                                return newErrors;
+                              });
+                            }
+                          }}
+                          onBlur={async () => {
+                            // Validar duplicados al perder foco
+                            if (manualClubName.trim() && sportTypeId) {
+                              const { exists, matchedClub } = await checkClubExists(manualClubName.trim(), sportTypeId);
+                              if (exists) {
+                                setClubDuplicateError(`Ya existe un club aprobado con un nombre similar: "${matchedClub}". Por favor selecciónalo de la lista.`);
+                              }
+                            }
+                          }}
+                          placeholder="Nombre del equipo *"
+                          className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        />
+                        {clubDuplicateError && (
+                          <p className="text-sm text-yellow-400">{clubDuplicateError}</p>
+                        )}
+
+                        {/* Ciudad del club */}
+                        <input
+                          type="text"
+                          value={newClubCity}
+                          onChange={(e) => setNewClubCity(e.target.value.slice(0, 50))}
+                          placeholder="Ciudad del club (opcional, máx 50 caracteres)"
+                          maxLength={50}
+                          className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        />
+
+                        {/* Estado del club */}
+                        <select
+                          value={newClubState}
+                          onChange={(e) => setNewClubState(e.target.value)}
+                          className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        >
+                          <option value="">Selecciona un estado (opcional)</option>
+                          {MEXICAN_STATES.map((state) => (
+                            <option key={state} value={state}>{state}</option>
+                          ))}
+                        </select>
+
+                        {/* Logo del club */}
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-1">Logo del club (opcional, PNG/JPG, máx 2MB)</label>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] || null;
+                              if (file) {
+                                // Validar tipo
+                                if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+                                  setErrors((prev) => ({ ...prev, newClubLogo: 'Solo se permiten archivos PNG, JPG o JPEG' }));
+                                  return;
+                                }
+                                // Validar tamaño
+                                if (file.size > 2 * 1024 * 1024) {
+                                  setErrors((prev) => ({ ...prev, newClubLogo: 'El archivo debe ser menor a 2MB' }));
+                                  return;
+                                }
+                                setErrors((prev) => {
+                                  const newErrors = { ...prev };
+                                  delete newErrors.newClubLogo;
+                                  return newErrors;
+                                });
+                              }
+                              setNewClubLogo(file);
+                            }}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:bg-orange-primary file:text-white-pure hover:file:bg-orange-primary/80"
+                          />
+                          {errors.newClubLogo && (
+                            <p className="mt-1 text-sm text-red-fire">{errors.newClubLogo}</p>
+                          )}
+                          {newClubLogo && (
+                            <p className="mt-1 text-sm text-green-400">Archivo seleccionado: {newClubLogo.name}</p>
+                          )}
+                        </div>
+                      </div>
                     )}
 
-                    {errors.club && (
+                    {/* Foto para club existente sin logo */}
+                    {!clubNotInList && selectedClubId && selectedClubId !== 'independent' && isExistingClubPhotoEnabled(registrationConfig) && (() => {
+                      const selectedClub = clubs.find(c => c.id === selectedClubId);
+                      return selectedClub && !selectedClub.logo_url;
+                    })() && (
+                      <div className="mt-3 p-3 bg-white-pure/5 rounded-lg border border-white-pure/20">
+                        <label className="block text-sm text-gray-400 mb-2">
+                          Tu club no tiene logo. ¿Quieres subir uno?
+                          {isExistingClubPhotoRequired(registrationConfig) && <span className="text-orange-primary ml-1">*</span>}
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            if (file) {
+                              if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+                                setErrors((prev) => ({ ...prev, existingClubPhoto: 'Solo se permiten archivos PNG, JPG o JPEG' }));
+                                return;
+                              }
+                              if (file.size > 2 * 1024 * 1024) {
+                                setErrors((prev) => ({ ...prev, existingClubPhoto: 'El archivo debe ser menor a 2MB' }));
+                                return;
+                              }
+                              setErrors((prev) => {
+                                const newErrors = { ...prev };
+                                delete newErrors.existingClubPhoto;
+                                return newErrors;
+                              });
+                            }
+                            setExistingClubPhoto(file);
+                          }}
+                          className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:bg-orange-primary file:text-white-pure hover:file:bg-orange-primary/80"
+                        />
+                        {errors.existingClubPhoto && (
+                          <p className="mt-1 text-sm text-red-fire">{errors.existingClubPhoto}</p>
+                        )}
+                        {existingClubPhoto && (
+                          <p className="mt-1 text-sm text-green-400">Archivo seleccionado: {existingClubPhoto.name}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {!clubNotInList && errors.club && (
                       <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
                     )}
                   </div>
@@ -1895,6 +2128,7 @@ export default function RegistrationModal({
                             onChange={(e) => {
                               const checked = e.target.checked;
                               setClubNotInList(checked);
+                              setClubDuplicateError('');
                               setErrors((prev) => {
                                 const newErrors = { ...prev };
                                 delete newErrors.club;
@@ -1903,6 +2137,7 @@ export default function RegistrationModal({
                               if (checked) {
                                 setSelectedClubId('');
                                 handleChange('club_id', '');
+                                setExistingClubPhoto(null);
                               } else {
                                 setManualClubName('');
                                 handleChange('club', '');
