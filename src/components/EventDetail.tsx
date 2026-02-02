@@ -13,7 +13,7 @@ import EventGallery from './EventGallery';
 import EventNavigation from './EventNavigation';
 import { FiDownload, FiUpload, FiHome, FiInfo, FiPackage, FiList, FiImage } from 'react-icons/fi';
 import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa';
-
+import type { MouseEventHandler } from 'react';
 interface EventDetailProps {
   slug: string | undefined;
 }
@@ -138,7 +138,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
             if (typeof window !== 'undefined') {
               // Buscar todos los contenedores de Strava en el DOM
               const stravaContainers = document.querySelectorAll('.strava-embed-container');
-              
+
               if (stravaContainers.length > 0) {
                 // Si el script ya está cargado, inicializar
                 if ((window as any).StravaEmbeds) {
@@ -152,22 +152,22 @@ export default function EventDetail({ slug }: EventDetailProps) {
             }
           }, 500);
         });
-        
+
         return () => cancelAnimationFrame(frame2);
       });
-      
+
       return () => cancelAnimationFrame(frame1);
     }
   }, [distanceGroups]);
 
-  const loadEventData = async (eventSlug?: string) => {
+  const loadEventData = async (eventSlug?: string): Promise<any> => {
     try {
       setLoading(true);
       setError(null);
 
       // Usar el slug proporcionado o el de la prop, o extraerlo de la URL
       let currentSlug = eventSlug || slug || (typeof window !== 'undefined' ? window.location.pathname.split('/eventos/')[1]?.split('/')[0] : '');
-      
+
       // Limpiar el slug: remover slash al final y espacios
       if (currentSlug) {
         currentSlug = currentSlug.replace(/\/$/, '').trim();
@@ -258,7 +258,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
       if (categoriesError) {
         console.error('Error loading categories:', categoriesError);
       } else {
-        const categoriesWithDistance = (categoriesData || []) as CategoryWithDistance[];
+        const categoriesWithDistance = (categoriesData || []) as unknown as CategoryWithDistance[];
         setCategories(categoriesWithDistance);
 
         // Agrupar por distancia
@@ -332,7 +332,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
       <div className="bg-red-fire/20 border border-red-fire rounded-lg p-6 text-center">
         <p className="text-white-pure">{error || 'Evento no encontrado'}</p>
         <button
-          onClick={loadEventData}
+          onClick={() => loadEventData()}
           className="mt-4 px-4 py-2 bg-orange-primary hover:bg-red-fire text-white-pure rounded-lg transition-colors"
         >
           Reintentar
@@ -365,7 +365,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
         <div className="w-full max-w-[1920px] mx-auto h-[420px] relative overflow-hidden bg-black-asphalt/30 m-0 p-0">
           {event.mobile_banner_url && (
             <img
-              src={getBannerUrl(event.mobile_banner_url, true)}
+              src={getBannerUrl(event.mobile_banner_url, true) || ''}
               alt={event.name}
               className="w-full h-full object-cover object-center max-[500px]:block hidden"
               loading="eager"
@@ -373,7 +373,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
           )}
           {event.banner_url && (
             <img
-              src={getBannerUrl(event.banner_url)}
+              src={getBannerUrl(event.banner_url) || ''}
               alt={event.name}
               className={`w-full h-full object-contain object-center ${event.mobile_banner_url ? 'max-[500px]:hidden block' : 'block'}`}
               loading="eager"
@@ -399,7 +399,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
 
       <div className="container mx-auto px-4 pt-6 pb-8 md:pt-8 md:pb-12">
         <div className="max-w-4xl mx-auto">
-          <header 
+          <header
             {...(!isUpcoming || !event.date ? { id: 'inicio' } : {})}
             className={`mb-8 ${!isUpcoming || !event.date ? 'scroll-mt-32' : ''}`}
           >
@@ -416,7 +416,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
                 Ubicación: {event.location}
               </p>
             )}
-            
+
             {/* Redes sociales del evento */}
             {(event.facebook_url || event.instagram_url || event.whatsapp_url) && (
               <div className="flex gap-4 mt-4">
@@ -474,6 +474,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
                 currency={event.currency || 'MXN'}
                 maxCompetitors={event.max_competitors}
                 registeredCount={registeredCount}
+                sportTypeId={event.sport_type_id}
               />
             )}
 
@@ -493,8 +494,8 @@ export default function EventDetail({ slug }: EventDetailProps) {
               onClick={() => paymentProofEnabled && setIsPaymentProofModalOpen(true)}
               disabled={!paymentProofEnabled}
               className={`w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg transition-colors flex items-center justify-center gap-2 ${paymentProofEnabled
-                  ? 'bg-white-pure/10 hover:bg-white-pure/20 text-white-pure cursor-pointer'
-                  : 'bg-white-pure/20 text-white-pure/50 cursor-not-allowed'
+                ? 'bg-white-pure/10 hover:bg-white-pure/20 text-white-pure cursor-pointer'
+                : 'bg-white-pure/20 text-white-pure/50 cursor-not-allowed'
                 }`}
             >
               <FiUpload className="h-5 w-5" />
