@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ComponentProps } from 'react';
 import { supabase } from '../lib/supabase';
 import RegistrationModal from './RegistrationModal';
 
@@ -26,6 +26,7 @@ interface RegistrationButtonProps {
   currency?: string;
   maxCompetitors?: number | null;
   registeredCount?: number;
+  sportTypeId?: string | null; // ID del tipo de deporte del evento para filtrar clubs
 }
 
 export default function RegistrationButton({
@@ -40,6 +41,7 @@ export default function RegistrationButton({
   currency = 'MXN',
   maxCompetitors,
   registeredCount = 0,
+  sportTypeId,
 }: RegistrationButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [eventPricing, setEventPricing] = useState<EventPricing | null>(null);
@@ -48,15 +50,15 @@ export default function RegistrationButton({
   // Convertir a números para asegurar comparación correcta
   const maxCompetitorsNum = maxCompetitors !== null && maxCompetitors !== undefined ? Number(maxCompetitors) : null;
   const registeredCountNum = Number(registeredCount) || 0;
-  
+
   // Si maxCompetitors está definido y registeredCount >= maxCompetitors, se alcanzó el máximo
-  const isMaxReached = 
-    maxCompetitorsNum !== null && 
-    maxCompetitorsNum > 0 && 
+  const isMaxReached =
+    maxCompetitorsNum !== null &&
+    maxCompetitorsNum > 0 &&
     registeredCountNum >= maxCompetitorsNum;
-  
+
   const isDisabled = !registrationOpen || isMaxReached;
-  
+
   // Determinar el texto a mostrar según el motivo de deshabilitación
   let displayText = buttonText;
   if (isMaxReached) {
@@ -101,11 +103,10 @@ export default function RegistrationButton({
     <>
       <button
         onClick={() => !isDisabled && setIsModalOpen(true)}
-        className={`w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg transition-colors ${
-          !isDisabled
-            ? 'bg-orange-primary hover:bg-red-fire text-white-pure cursor-pointer'
-            : 'bg-white-pure/20 text-white-pure/50 cursor-not-allowed'
-        }`}
+        className={`w-full md:w-auto px-8 py-3 rounded-lg font-semibold text-lg transition-colors ${!isDisabled
+          ? 'bg-orange-primary hover:bg-red-fire text-white-pure cursor-pointer'
+          : 'bg-white-pure/20 text-white-pure/50 cursor-not-allowed'
+          }`}
         disabled={isDisabled}
       >
         {displayText}
@@ -116,9 +117,10 @@ export default function RegistrationButton({
         registrationConfig={registrationConfig}
         isOpen={isModalOpen && !isMaxReached}
         onClose={() => setIsModalOpen(false)}
-        eventPricing={eventPricing}
+        eventPricing={eventPricing as ComponentProps<typeof RegistrationModal>['eventPricing']}
         maxCompetitors={maxCompetitorsNum}
         registeredCount={registeredCountNum}
+        sportTypeId={sportTypeId}
       />
     </>
   );

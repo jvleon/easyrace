@@ -271,6 +271,107 @@ export async function uploadPaymentProofToCloudflare(
 }
 
 /**
+ * Normaliza el nombre del club para usar como parte del custom ID
+ * Elimina caracteres especiales, acentos y espacios
+ */
+function normalizeClubNameForId(clubName: string): string {
+  return clubName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+    .replace(/[^a-z0-9]+/g, '-')     // Reemplazar caracteres especiales con guiones
+    .replace(/^-+|-+$/g, '')         // Eliminar guiones al inicio/final
+    .substring(0, 50);                // Limitar a 50 caracteres
+}
+
+/**
+ * Sube el logo de un club a Cloudflare Images
+ * @param file - Archivo de imagen a subir (PNG, JPG, JPEG, máximo 2MB)
+ * @param clubName - Nombre del club (para el custom ID)
+ * @param eventSlug - Slug del evento
+ * @param eventId - ID del evento (opcional)
+ * @returns URL pública de la imagen
+ */
+export async function uploadClubLogoToCloudflare(
+  file: File,
+  clubName: string,
+  eventSlug: string,
+  eventId?: string
+): Promise<string> {
+  // Validar que sea PNG, JPG o JPEG (preferible PNG según requerimiento)
+  const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+  if (!allowedTypes.includes(file.type)) {
+    throw new Error('Solo se permiten archivos PNG, JPG o JPEG para el logo del club');
+  }
+
+  // Validar tamaño (2MB máximo)
+  const maxSize = 2 * 1024 * 1024; // 2 MB
+  if (file.size > maxSize) {
+    throw new Error('El logo del club debe ser menor a 2MB');
+  }
+
+  // Normalizar el slug del evento y nombre del club
+  const normalizedSlug = normalizeEventSlug(eventSlug);
+  const normalizedClubName = normalizeClubNameForId(clubName);
+
+  // Generar custom ID con formato: club-logo-{event-slug}-{normalized-club-name}-{random-id}
+  const randomId = generateRandomId();
+  const customId = `club-logo-${normalizedSlug}-${normalizedClubName}-${randomId}`;
+
+  try {
+    const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
+    await uploadToCloudflare(file, uploadUrl);
+    return publicUrl;
+  } catch (error) {
+    console.error('Error en uploadClubLogoToCloudflare:', error);
+    throw error;
+  }
+}
+
+/**
+ * Sube la foto de un club existente (cuando el club no tiene logo)
+ * @param file - Archivo de imagen a subir (PNG, JPG, JPEG, máximo 2MB)
+ * @param clubId - ID del club
+ * @param eventSlug - Slug del evento
+ * @param eventId - ID del evento (opcional)
+ * @returns URL pública de la imagen
+ */
+export async function uploadExistingClubPhotoToCloudflare(
+  file: File,
+  clubId: string,
+  eventSlug: string,
+  eventId?: string
+): Promise<string> {
+  // Validar que sea PNG, JPG o JPEG
+  const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+  if (!allowedTypes.includes(file.type)) {
+    throw new Error('Solo se permiten archivos PNG, JPG o JPEG para la foto del club');
+  }
+
+  // Validar tamaño (2MB máximo)
+  const maxSize = 2 * 1024 * 1024; // 2 MB
+  if (file.size > maxSize) {
+    throw new Error('La foto del club debe ser menor a 2MB');
+  }
+
+  // Normalizar el slug del evento
+  const normalizedSlug = normalizeEventSlug(eventSlug);
+
+  // Generar custom ID con formato: club-photo-{event-slug}-{club-id}-{random-id}
+  const randomId = generateRandomId();
+  const customId = `club-photo-${normalizedSlug}-${clubId}-${randomId}`;
+
+  try {
+    const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
+    await uploadToCloudflare(file, uploadUrl);
+    return publicUrl;
+  } catch (error) {
+    console.error('Error en uploadExistingClubPhotoToCloudflare:', error);
+    throw error;
+  }
+}
+
+/**
  * Verifica si una URL es de Cloudflare Images
  */
 export function isCloudflareImageUrl(url: string | null | undefined): boolean {

@@ -21,6 +21,80 @@ export interface ParsedField {
   options?: { value: string; label: string }[];
 }
 
+/**
+ * Helper to get the club field configuration from registration config
+ * Returns the club field config or null if not found
+ */
+function getClubFieldConfig(config: RegistrationConfig | null | undefined): FieldConfig | null {
+  if (!config?.fields || !Array.isArray(config.fields)) {
+    return null;
+  }
+  return config.fields.find((field) => field.id === 'club' || field.id === 'club_id') || null;
+}
+
+/**
+ * Check if the club field is enabled in the registration config
+ * Defaults to true for backward compatibility
+ */
+export function isClubFieldEnabled(config: RegistrationConfig | null | undefined): boolean {
+  const clubField = getClubFieldConfig(config);
+  // Default to enabled for backward compatibility
+  if (!clubField) return true;
+  return clubField.enabled !== false;
+}
+
+/**
+ * Check if the club field is required in the registration config
+ * Defaults to false (optional) for new configurations
+ */
+export function isClubFieldRequired(config: RegistrationConfig | null | undefined): boolean {
+  const clubField = getClubFieldConfig(config);
+  // Default to false (optional) for new configurations
+  if (!clubField) return false;
+  return clubField.required === true;
+}
+
+/**
+ * Check if the "Mi club no está en la lista" option is enabled
+ * Defaults to true for backward compatibility
+ */
+export function isClubNotInListEnabled(config: RegistrationConfig | null | undefined): boolean {
+  if (!config?.fields || !Array.isArray(config.fields)) {
+    return true; // Default to enabled for backward compatibility
+  }
+  const clubNotInListField = config.fields.find((field) => field.id === 'club_not_in_list');
+  // Default to enabled for backward compatibility
+  if (!clubNotInListField) return true;
+  return clubNotInListField.enabled !== false;
+}
+
+/**
+ * Check if the existing club photo field is enabled
+ * This field allows competitors to upload a photo for clubs that don't have a logo
+ * Defaults to false (disabled) 
+ */
+export function isExistingClubPhotoEnabled(config: RegistrationConfig | null | undefined): boolean {
+  if (!config?.fields || !Array.isArray(config.fields)) {
+    return false; // Default to disabled
+  }
+  const existingClubPhotoField = config.fields.find((field) => field.id === 'existing_club_photo');
+  if (!existingClubPhotoField) return false;
+  return existingClubPhotoField.enabled === true;
+}
+
+/**
+ * Check if the existing club photo field is required
+ * Defaults to false (optional)
+ */
+export function isExistingClubPhotoRequired(config: RegistrationConfig | null | undefined): boolean {
+  if (!config?.fields || !Array.isArray(config.fields)) {
+    return false; // Default to optional
+  }
+  const existingClubPhotoField = config.fields.find((field) => field.id === 'existing_club_photo');
+  if (!existingClubPhotoField) return false;
+  return existingClubPhotoField.required === true;
+}
+
 const fieldLabels: Record<string, string> = {
   first_name: 'Nombre',
   last_name: 'Apellido',
@@ -64,6 +138,7 @@ const fieldTypes: Record<string, ParsedField['type']> = {
 export function parseRegistrationConfig(
   config: RegistrationConfig | null | undefined
 ): ParsedField[] {
+  // Base fields that are always shown (club_id is now configurable and handled separately)
   const baseFields: ParsedField[] = [
     {
       name: 'first_name',
@@ -83,12 +158,6 @@ export function parseRegistrationConfig(
       label: 'Correo electrónico',
       required: true,
     },
-    {
-      name: 'club_id',
-      type: 'select',
-      label: 'Club',
-      required: true,
-    },
   ];
 
   if (!config) {
@@ -103,8 +172,16 @@ export function parseRegistrationConfig(
       .filter((field) => field.enabled !== false) // Filtrar campos deshabilitados
       .map((field) => {
         const fieldId = field.id || field.name || '';
-        // Excluir first_name, last_name, email y club_id ya que siempre están al inicio
-        if (fieldId === 'first_name' || fieldId === 'last_name' || fieldId === 'email' || fieldId === 'club_id' || fieldId === 'club') {
+        // Excluir campos que se manejan por separado
+        if (
+          fieldId === 'first_name' || 
+          fieldId === 'last_name' || 
+          fieldId === 'email' || 
+          fieldId === 'club_id' || 
+          fieldId === 'club' || 
+          fieldId === 'club_not_in_list' ||
+          fieldId === 'existing_club_photo'
+        ) {
           return null;
         }
         const normalizedFieldId = fieldId;
@@ -128,7 +205,15 @@ export function parseRegistrationConfig(
     const allFields = [...new Set([...required, ...optional])];
 
     additionalFields = allFields
-      .filter((fieldName) => fieldName !== 'first_name' && fieldName !== 'last_name' && fieldName !== 'email' && fieldName !== 'club_id' && fieldName !== 'club')
+      .filter((fieldName) => 
+        fieldName !== 'first_name' && 
+        fieldName !== 'last_name' && 
+        fieldName !== 'email' && 
+        fieldName !== 'club_id' && 
+        fieldName !== 'club' &&
+        fieldName !== 'club_not_in_list' &&
+        fieldName !== 'existing_club_photo'
+      )
       .map((fieldName) => {
         return {
           name: fieldName,

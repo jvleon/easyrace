@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import Select from 'react-select';
 import { supabase } from '../lib/supabase';
-import { parseRegistrationConfig, type ParsedField } from '../utils/registrationConfigParser';
-import { uploadIdPhotoToCloudflare, uploadSocialPhotoToCloudflare, uploadPaymentProofToCloudflare } from '../utils/cloudflare';
+import { parseRegistrationConfig, type ParsedField, isClubFieldEnabled, isClubFieldRequired, isClubNotInListEnabled, isExistingClubPhotoEnabled, isExistingClubPhotoRequired } from '../utils/registrationConfigParser';
+import { uploadIdPhotoToCloudflare, uploadSocialPhotoToCloudflare, uploadPaymentProofToCloudflare, uploadClubLogoToCloudflare, uploadExistingClubPhotoToCloudflare } from '../utils/cloudflare';
 import { validateEmailNotTemporary } from '../utils/emailValidation';
+import { MEXICAN_STATES, checkClubExists, normalizeClubName } from '../utils/clubValidation';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader } from 'react-icons/fi';
 import ReCAPTCHA from 'react-google-recaptcha';
 
@@ -27,6 +28,8 @@ interface Kit {
   price: number;
   has_sizes: boolean;
   is_pair_kit?: boolean; // Indica si el kit es para parejas
+  max_quantity?: number | null;
+  sold_quantity?: number | null;
 }
 
 interface KitSize {
@@ -37,6 +40,8 @@ interface KitSize {
 interface Club {
   id: string;
   name: string;
+  logo_url?: string | null;
+  status?: string | null;
 }
 
 interface EventPricing {
@@ -54,6 +59,7 @@ interface RegistrationModalProps {
   eventPricing?: EventPricing | null;
   maxCompetitors?: number | null;
   registeredCount?: number;
+  sportTypeId?: string | null; // ID del tipo de deporte del evento para filtrar clubs
 }
 
 export default function RegistrationModal({
@@ -65,6 +71,7 @@ export default function RegistrationModal({
   eventPricing,
   maxCompetitors,
   registeredCount = 0,
+  sportTypeId,
 }: RegistrationModalProps) {
   const [fields, setFields] = useState<ParsedField[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -80,6 +87,13 @@ export default function RegistrationModal({
   const [clubNotInList, setClubNotInList] = useState<boolean>(false);
   const [selectedClubId, setSelectedClubId] = useState<string>('');
   const [manualClubName, setManualClubName] = useState<string>('');
+  // Estados para registro de nuevo club
+  const [newClubCity, setNewClubCity] = useState<string>('');
+  const [newClubState, setNewClubState] = useState<string>('');
+  const [newClubLogo, setNewClubLogo] = useState<File | null>(null);
+  const [clubDuplicateError, setClubDuplicateError] = useState<string>('');
+  // Estado para foto de club existente sin logo
+  const [existingClubPhoto, setExistingClubPhoto] = useState<File | null>(null);
   const [selectedGender, setSelectedGender] = useState<string>(''); // 'male' o 'female'
   const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
   const [kits, setKits] = useState<Kit[]>([]);
@@ -191,9 +205,10 @@ export default function RegistrationModal({
       setPendingCategoryChange(null);
 
       const parsedFields = parseRegistrationConfig(registrationConfig);
-      // Ordenar campos: mantener orden de campos base (first_name, last_name, email, club_id) y luego el resto
+      // Ordenar campos: mantener orden de campos base (first_name, last_name, email) y luego el resto
       // Separar campos base, campos de emergencia y otros campos
-      const baseFieldNames = ['first_name', 'last_name', 'email', 'club_id'];
+      // Nota: club_id ahora se maneja de forma separada y configurable
+      const baseFieldNames = ['first_name', 'last_name', 'email'];
       const emergencyFieldNames = ['emergency_contact_name', 'emergency_contact_phone'];
 
       const baseFields = parsedFields.filter((f) => baseFieldNames.includes(f.name));
@@ -223,6 +238,11 @@ export default function RegistrationModal({
       setClubNotInList(false);
       setSelectedClubId('');
       setManualClubName('');
+      setNewClubCity('');
+      setNewClubState('');
+      setNewClubLogo(null);
+      setClubDuplicateError('');
+      setExistingClubPhoto(null);
       setSelectedGender('');
       setAcceptedTerms(false);
       setSelectedKitId('');
@@ -235,7 +255,7 @@ export default function RegistrationModal({
       loadCategories();
       loadClubs();
     }
-  }, [isOpen, registrationConfig, eventId]);
+  }, [isOpen, registrationConfig, eventId, sportTypeId]);
 
   // Verificar si hay datos en el formulario
   const hasFormData = () => {
@@ -316,7 +336,7 @@ export default function RegistrationModal({
         .order('name');
 
       if (error) throw error;
-      const loadedCategories = (data || []) as Category[];
+      const loadedCategories = (data || []) as unknown as Category[];
       setAllCategories(loadedCategories);
       // Inicialmente no hay categorías visibles hasta que se seleccione un género
       setCategories([]);
@@ -367,8 +387,9 @@ export default function RegistrationModal({
       }
       // Si la categoría tiene required_kit_ids, solo mostrar esos kits
       else if (selectedCategory?.required_kit_ids && selectedCategory.required_kit_ids.length > 0) {
+        const requiredIds = selectedCategory.required_kit_ids;
         filteredKits = allKitsData.filter((kit: any) =>
-          selectedCategory.required_kit_ids.includes(kit.id)
+          requiredIds.includes(kit.id)
         );
       } else {
         // Si no, mostrar kits donde category_ids incluye esta categoría o está vacío/null/undefined
@@ -512,16 +533,67 @@ export default function RegistrationModal({
 
   const loadClubs = async () => {
     try {
-      const { data, error } = await supabase
-        .from('clubs')
-        .select('id, name')
-        .order('name');
+      let clubsData: Club[] = [];
 
-      if (error) {
-        console.error('Error loading clubs:', error);
-        return;
+      if (sportTypeId) {
+        // Si el evento tiene un deporte principal, filtrar clubs por ese deporte
+        const { data: filteredClubs, error: clubsError } = await supabase
+          .from('club_sports')
+          .select(`
+            club_id,
+            clubs!inner (
+              id,
+              name,
+              logo_url,
+              status
+            )
+          `)
+          .eq('sport_type_id', sportTypeId);
+
+        if (clubsError) {
+          console.error('Error fetching clubs by sport:', clubsError);
+        }
+
+        if (filteredClubs && filteredClubs.length > 0) {
+          // Extraer clubs del resultado, filtrar por status aprobado (defensivo), y ordenar por nombre
+          clubsData = filteredClubs
+            .map((cs: any) => cs.clubs)
+            .filter(Boolean)
+            // Filtrado defensivo: si no tiene status o es 'approved', mostrar
+            .filter((club: Club) => !('status' in club) || club.status === 'approved' || club.status === null)
+            .sort((a: Club, b: Club) => a.name.localeCompare(b.name));
+        } else {
+          // Fallback: si no hay matches, carga todos los clubs para no dejar el selector vacío
+          const { data: allClubs, error: allClubsError } = await supabase
+            .from('clubs')
+            .select('id, name, logo_url, status')
+            .order('name');
+
+          if (allClubsError) {
+            console.error('Error fetching all clubs fallback:', allClubsError);
+          }
+          // Filtrado defensivo: si no tiene status o es 'approved', mostrar
+          clubsData = (allClubs || []).filter((club: Club) => 
+            !('status' in club) || club.status === 'approved' || club.status === null
+          );
+        }
+      } else {
+        // Si no hay deporte principal, mostrar todos los clubs
+        const { data: allClubs, error: allClubsError } = await supabase
+          .from('clubs')
+          .select('id, name, logo_url, status')
+          .order('name');
+
+        if (allClubsError) {
+          console.error('Error fetching all clubs:', allClubsError);
+        }
+        // Filtrado defensivo: si no tiene status o es 'approved', mostrar
+        clubsData = (allClubs || []).filter((club: Club) => 
+          !('status' in club) || club.status === 'approved' || club.status === null
+        );
       }
-      setClubs(data || []);
+
+      setClubs(clubsData);
     } catch (error) {
       console.error('Error loading clubs:', error);
     }
@@ -677,15 +749,13 @@ export default function RegistrationModal({
       }
 
       // Validar club del competidor 2
-      if (fields.some((f) => f.name === 'club_id' || f.name === 'club')) {
+      if (isClubFieldEnabled(registrationConfig)) {
         if (!clubNotInList && !selectedClubId) {
-          const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
-          if (clubField?.required) {
+          if (isClubFieldRequired(registrationConfig)) {
             newErrors.club = 'Debes seleccionar un equipo o marcar "Mi club no está en la lista"';
           }
         } else if (clubNotInList && !manualClubName.trim()) {
-          const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
-          if (clubField?.required) {
+          if (isClubFieldRequired(registrationConfig)) {
             newErrors.club = 'Debes escribir el nombre del equipo';
           }
         }
@@ -717,15 +787,13 @@ export default function RegistrationModal({
       }
 
       // Validar club
-      if (fields.some((f) => f.name === 'club_id' || f.name === 'club')) {
+      if (isClubFieldEnabled(registrationConfig)) {
         if (!clubNotInList && !selectedClubId) {
-          const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
-          if (clubField?.required) {
+          if (isClubFieldRequired(registrationConfig)) {
             newErrors.club = 'Debes seleccionar un equipo o marcar "Mi club no está en la lista"';
           }
         } else if (clubNotInList && !manualClubName.trim()) {
-          const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
-          if (clubField?.required) {
+          if (isClubFieldRequired(registrationConfig)) {
             newErrors.club = 'Debes escribir el nombre del equipo';
           }
         }
@@ -1198,11 +1266,84 @@ export default function RegistrationModal({
           competitorData.club_id = null;
         } else {
           competitorData.club_id = sourceSelectedClubId;
+          
+          // Si hay foto de club existente sin logo, subirla y actualizar el club
+          if (existingClubPhoto) {
+            try {
+              const clubPhotoUrl = await uploadExistingClubPhotoToCloudflare(
+                existingClubPhoto,
+                sourceSelectedClubId,
+                eventSlug,
+                eventId
+              );
+              // Actualizar el logo del club existente (defensivo, puede fallar si columna no existe)
+              await supabase
+                .from('clubs')
+                .update({ logo_url: clubPhotoUrl })
+                .eq('id', sourceSelectedClubId);
+            } catch (uploadError) {
+              console.warn('No se pudo subir la foto del club existente:', uploadError);
+              // No bloquear el registro por este error
+            }
+          }
         }
       } else if (sourceClubNotInList && sourceManualClubName && sourceManualClubName.trim()) {
-        // Si el checkbox SÍ está marcado, usar el nombre manual
+        // Si el checkbox SÍ está marcado, guardar el nombre como club_text (NO club_id)
         competitorData.club = sourceManualClubName.trim();
         competitorData.club_id = null;
+        
+        // Intentar crear un club pendiente para aprobación futura (defensivo)
+        try {
+          let newClubLogoUrl: string | null = null;
+          
+          // Subir logo si se proporcionó
+          if (newClubLogo) {
+            try {
+              newClubLogoUrl = await uploadClubLogoToCloudflare(
+                newClubLogo,
+                sourceManualClubName.trim(),
+                eventSlug,
+                eventId
+              );
+            } catch (logoError) {
+              console.warn('No se pudo subir el logo del nuevo club:', logoError);
+            }
+          }
+          
+          // Crear el club pendiente (defensivo - puede fallar si columnas no existen)
+          const newClubData: Record<string, any> = {
+            name: sourceManualClubName.trim(),
+            city: newClubCity || null,
+            status: 'pending',
+            logo_url: newClubLogoUrl,
+          };
+          
+          // Agregar state si está disponible
+          if (newClubState) {
+            newClubData.state = newClubState;
+          }
+          
+          const { data: createdClub, error: clubError } = await supabase
+            .from('clubs')
+            .insert(newClubData)
+            .select('id')
+            .single();
+          
+          if (!clubError && createdClub) {
+            // Agregar el deporte al club creado
+            if (sportTypeId) {
+              await supabase
+                .from('club_sports')
+                .insert({
+                  club_id: createdClub.id,
+                  sport_type_id: sportTypeId,
+                });
+            }
+          }
+        } catch (clubCreateError) {
+          console.warn('No se pudo crear el club pendiente (columnas pueden no existir):', clubCreateError);
+          // No bloquear el registro - el competidor se guarda con club_text normalmente
+        }
       }
 
       // Formatear teléfonos (solo dígitos)
@@ -1333,8 +1474,11 @@ export default function RegistrationModal({
   // Separar campos obligatorios y opcionales
   const requiredFields = fields.filter((f) => f.required);
   const optionalFields = fields.filter((f) => !f.required);
-  const hasClubField = fields.some((f) => f.name === 'club_id' || f.name === 'club');
-  const clubField = fields.find((f) => f.name === 'club_id' || f.name === 'club');
+
+  // Club field configuration - using helper functions that check the registration config
+  const hasClubField = isClubFieldEnabled(registrationConfig);
+  const clubFieldRequired = isClubFieldRequired(registrationConfig);
+  const showClubNotInList = isClubNotInListEnabled(registrationConfig);
 
   return (
     <div
@@ -1380,7 +1524,18 @@ export default function RegistrationModal({
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
+        <form onSubmit={handleSubmit} className="p-6 relative">
+          {/* Overlay de carga mientras se procesa el registro */}
+          {submitting && (
+            <div className="absolute inset-0 bg-black-asphalt/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-b-2xl">
+              <FiLoader className="animate-spin text-orange-primary mb-4" size={48} />
+              <p className="text-white-pure text-lg font-semibold">
+                {isPairCategory && currentStep === 1 ? 'Guardando datos...' : 'Procesando registro...'}
+              </p>
+              <p className="text-gray-400 text-sm mt-2">Por favor espera, no cierres esta ventana</p>
+            </div>
+          )}
+
           {success ? (
             <div className="text-center py-8">
               <FiCheckCircle className="mx-auto text-green-500 mb-4" size={48} />
@@ -1593,297 +1748,285 @@ export default function RegistrationModal({
                   </div>
                 )}
 
+                {/* Campo de Club - Solo mostrar en paso 1 o si no es categoría de parejas */}
+                {hasClubField && !(isPairCategory && currentStep === 2) && (
+                  <div
+                    ref={(el) => registerFieldErrorRef('club', el)}
+                    data-field-error="club"
+                    className="space-y-2"
+                  >
+                    <label className="block text-white-pure text-sm font-medium mb-2">
+                      Club/Equipo
+                      {clubFieldRequired && <span className="text-red-fire ml-1">*</span>}
+                    </label>
+
+                    <Select
+                      options={[
+                        { value: 'independent', label: 'Independiente' },
+                        ...clubs.map((club) => ({
+                          value: club.id,
+                          label: club.name,
+                        }))
+                      ]}
+                      value={selectedClubId ? (
+                        selectedClubId === 'independent'
+                          ? { value: 'independent', label: 'Independiente' }
+                          : clubs.find(c => c.id === selectedClubId)
+                            ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
+                            : null
+                      ) : null}
+                      onChange={(option) => {
+                        const value = option?.value || '';
+                        setSelectedClubId(value);
+                        handleChange('club_id', value);
+                        handleChange('club', '');
+                      }}
+                      isDisabled={clubNotInList}
+                      isClearable
+                      placeholder={clubFieldRequired ? "Buscar equipo..." : "Buscar equipo (opcional)..."}
+                      noOptionsMessage={() => "No se encontraron equipos"}
+                      styles={{
+                        control: (base, state) => ({
+                          ...base,
+                          backgroundColor: '#212121',
+                          borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
+                          borderWidth: '1px',
+                          borderRadius: '0.5rem',
+                          padding: '0.25rem',
+                          boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
+                          '&:hover': {
+                            borderColor: '#FF5722',
+                          },
+                          opacity: clubNotInList ? 0.5 : 1,
+                          cursor: clubNotInList ? 'not-allowed' : 'default',
+                        }),
+                        menu: (base) => ({
+                          ...base,
+                          backgroundColor: '#212121',
+                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                          borderRadius: '0.5rem',
+                        }),
+                        option: (base, state) => ({
+                          ...base,
+                          backgroundColor: state.isFocused ? '#FF5722' : '#212121',
+                          color: '#FFF',
+                          cursor: 'pointer',
+                          '&:active': {
+                            backgroundColor: '#E64A19',
+                          },
+                        }),
+                        singleValue: (base) => ({
+                          ...base,
+                          color: '#FFF',
+                        }),
+                        input: (base) => ({
+                          ...base,
+                          color: '#FFF',
+                        }),
+                        placeholder: (base) => ({
+                          ...base,
+                          color: 'rgba(255, 255, 255, 0.5)',
+                        }),
+                      }}
+                    />
+
+                    {showClubNotInList && (
+                      <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={clubNotInList}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setClubNotInList(checked);
+                            // Limpiar errores de validación del club
+                            setErrors((prev) => {
+                              const newErrors = { ...prev };
+                              delete newErrors.club;
+                              return newErrors;
+                            });
+                            setClubDuplicateError('');
+                            if (checked) {
+                              // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
+                              setSelectedClubId('');
+                              handleChange('club_id', '');
+                              setExistingClubPhoto(null);
+                            } else {
+                              // Al desmarcar: habilitar select, limpiar datos de nuevo club
+                              setManualClubName('');
+                              setNewClubCity('');
+                              setNewClubState('');
+                              setNewClubLogo(null);
+                              handleChange('club', '');
+                            }
+                          }}
+                          className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
+                        />
+                        <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
+                      </label>
+                    )}
+
+                    {clubNotInList && (
+                      <div className="space-y-3 mt-3 p-4 bg-white-pure/5 rounded-lg border border-white-pure/20">
+                        <p className="text-sm text-gray-400 mb-2">Registra tu club para que otros competidores puedan encontrarlo en el futuro.</p>
+                        
+                        {/* Nombre del club */}
+                        <input
+                          type="text"
+                          value={manualClubName}
+                          onChange={async (e) => {
+                            const value = e.target.value;
+                            setManualClubName(value);
+                            handleChange('club', value);
+                            handleChange('club_id', '');
+                            setClubDuplicateError('');
+                            // Limpiar error de validación cuando el usuario escribe
+                            if (errors.club) {
+                              setErrors((prev) => {
+                                const newErrors = { ...prev };
+                                delete newErrors.club;
+                                return newErrors;
+                              });
+                            }
+                          }}
+                          onBlur={async () => {
+                            // Validar duplicados al perder foco
+                            if (manualClubName.trim() && sportTypeId) {
+                              const { exists, matchedClub } = await checkClubExists(manualClubName.trim(), sportTypeId);
+                              if (exists) {
+                                setClubDuplicateError(`Ya existe un club aprobado con un nombre similar: "${matchedClub}". Por favor selecciónalo de la lista.`);
+                              }
+                            }
+                          }}
+                          placeholder="Nombre del equipo *"
+                          className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        />
+                        {clubDuplicateError && (
+                          <p className="text-sm text-yellow-400">{clubDuplicateError}</p>
+                        )}
+
+                        {/* Ciudad del club */}
+                        <input
+                          type="text"
+                          value={newClubCity}
+                          onChange={(e) => setNewClubCity(e.target.value.slice(0, 50))}
+                          placeholder="Ciudad del club (opcional, máx 50 caracteres)"
+                          maxLength={50}
+                          className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        />
+
+                        {/* Estado del club */}
+                        <select
+                          value={newClubState}
+                          onChange={(e) => setNewClubState(e.target.value)}
+                          className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        >
+                          <option value="">Selecciona un estado (opcional)</option>
+                          {MEXICAN_STATES.map((state) => (
+                            <option key={state} value={state}>{state}</option>
+                          ))}
+                        </select>
+
+                        {/* Logo del club */}
+                        <div>
+                          <label className="block text-sm text-gray-400 mb-1">Logo del club (opcional, PNG/JPG, máx 2MB)</label>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] || null;
+                              if (file) {
+                                // Validar tipo
+                                if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+                                  setErrors((prev) => ({ ...prev, newClubLogo: 'Solo se permiten archivos PNG, JPG o JPEG' }));
+                                  return;
+                                }
+                                // Validar tamaño
+                                if (file.size > 2 * 1024 * 1024) {
+                                  setErrors((prev) => ({ ...prev, newClubLogo: 'El archivo debe ser menor a 2MB' }));
+                                  return;
+                                }
+                                setErrors((prev) => {
+                                  const newErrors = { ...prev };
+                                  delete newErrors.newClubLogo;
+                                  return newErrors;
+                                });
+                              }
+                              setNewClubLogo(file);
+                            }}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:bg-orange-primary file:text-white-pure hover:file:bg-orange-primary/80"
+                          />
+                          {errors.newClubLogo && (
+                            <p className="mt-1 text-sm text-red-fire">{errors.newClubLogo}</p>
+                          )}
+                          {newClubLogo && (
+                            <p className="mt-1 text-sm text-green-400">Archivo seleccionado: {newClubLogo.name}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Foto para club existente sin logo */}
+                    {!clubNotInList && selectedClubId && selectedClubId !== 'independent' && isExistingClubPhotoEnabled(registrationConfig) && (() => {
+                      const selectedClub = clubs.find(c => c.id === selectedClubId);
+                      return selectedClub && !selectedClub.logo_url;
+                    })() && (
+                      <div className="mt-3 p-3 bg-white-pure/5 rounded-lg border border-white-pure/20">
+                        <label className="block text-sm text-gray-400 mb-2">
+                          Tu club no tiene logo. ¿Quieres subir uno?
+                          {isExistingClubPhotoRequired(registrationConfig) && <span className="text-orange-primary ml-1">*</span>}
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            if (file) {
+                              if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+                                setErrors((prev) => ({ ...prev, existingClubPhoto: 'Solo se permiten archivos PNG, JPG o JPEG' }));
+                                return;
+                              }
+                              if (file.size > 2 * 1024 * 1024) {
+                                setErrors((prev) => ({ ...prev, existingClubPhoto: 'El archivo debe ser menor a 2MB' }));
+                                return;
+                              }
+                              setErrors((prev) => {
+                                const newErrors = { ...prev };
+                                delete newErrors.existingClubPhoto;
+                                return newErrors;
+                              });
+                            }
+                            setExistingClubPhoto(file);
+                          }}
+                          className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:bg-orange-primary file:text-white-pure hover:file:bg-orange-primary/80"
+                        />
+                        {errors.existingClubPhoto && (
+                          <p className="mt-1 text-sm text-red-fire">{errors.existingClubPhoto}</p>
+                        )}
+                        {existingClubPhoto && (
+                          <p className="mt-1 text-sm text-green-400">Archivo seleccionado: {existingClubPhoto.name}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {!clubNotInList && errors.club && (
+                      <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
+                    )}
+                  </div>
+                )}
+
                 {/* Campos obligatorios - Solo mostrar en paso 1 o si no es categoría de parejas */}
                 {requiredFields.length > 0 && !(isPairCategory && currentStep === 2) && (
                   <>
                     {requiredFields
                       .filter((field) => field.name !== 'gender' && field.name !== 'category_id') // Excluir gender y category_id ya que se manejan arriba
-                      .map((field) => {
-                        if (field.name === 'club_id' || field.name === 'club') {
-                          return (
-                            <div
-                              key={field.name}
-                              ref={(el) => registerFieldErrorRef('club', el)}
-                              data-field-error="club"
-                              className="space-y-2"
-                            >
-                              <label className="block text-white-pure text-sm font-medium mb-2">
-                                {field.label}
-                                {field.required && <span className="text-red-fire ml-1">*</span>}
-                              </label>
-
-                              <Select
-                                options={[
-                                  { value: 'independent', label: 'Independiente' },
-                                  ...clubs.map((club) => ({
-                                    value: club.id,
-                                    label: club.name,
-                                  }))
-                                ]}
-                                value={selectedClubId ? (
-                                  selectedClubId === 'independent'
-                                    ? { value: 'independent', label: 'Independiente' }
-                                    : clubs.find(c => c.id === selectedClubId)
-                                      ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
-                                      : null
-                                ) : null}
-                                onChange={(option) => {
-                                  const value = option?.value || '';
-                                  setSelectedClubId(value);
-                                  handleChange('club_id', value);
-                                  handleChange('club', '');
-                                }}
-                                isDisabled={clubNotInList}
-                                isClearable
-                                placeholder="Buscar equipo..."
-                                noOptionsMessage={() => "No se encontraron equipos"}
-                                styles={{
-                                  control: (base, state) => ({
-                                    ...base,
-                                    backgroundColor: '#212121',
-                                    borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
-                                    borderWidth: '1px',
-                                    borderRadius: '0.5rem',
-                                    padding: '0.25rem',
-                                    boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
-                                    '&:hover': {
-                                      borderColor: '#FF5722',
-                                    },
-                                    opacity: clubNotInList ? 0.5 : 1,
-                                    cursor: clubNotInList ? 'not-allowed' : 'default',
-                                  }),
-                                  menu: (base) => ({
-                                    ...base,
-                                    backgroundColor: '#212121',
-                                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                                    borderRadius: '0.5rem',
-                                  }),
-                                  option: (base, state) => ({
-                                    ...base,
-                                    backgroundColor: state.isFocused ? '#FF5722' : '#212121',
-                                    color: '#FFF',
-                                    cursor: 'pointer',
-                                    '&:active': {
-                                      backgroundColor: '#E64A19',
-                                    },
-                                  }),
-                                  singleValue: (base) => ({
-                                    ...base,
-                                    color: '#FFF',
-                                  }),
-                                  input: (base) => ({
-                                    ...base,
-                                    color: '#FFF',
-                                  }),
-                                  placeholder: (base) => ({
-                                    ...base,
-                                    color: 'rgba(255, 255, 255, 0.5)',
-                                  }),
-                                }}
-                              />
-
-                              <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
-                                <input
-                                  type="checkbox"
-                                  checked={clubNotInList}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    setClubNotInList(checked);
-                                    // Limpiar errores de validación del club
-                                    setErrors((prev) => {
-                                      const newErrors = { ...prev };
-                                      delete newErrors.club;
-                                      return newErrors;
-                                    });
-                                    if (checked) {
-                                      // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
-                                      setSelectedClubId('');
-                                      handleChange('club_id', '');
-                                    } else {
-                                      // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
-                                      setManualClubName('');
-                                      handleChange('club', '');
-                                    }
-                                  }}
-                                  className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
-                                />
-                                <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
-                              </label>
-
-                              {clubNotInList && (
-                                <input
-                                  type="text"
-                                  value={manualClubName}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    setManualClubName(value);
-                                    handleChange('club', value);
-                                    handleChange('club_id', '');
-                                    // Limpiar error de validación cuando el usuario escribe
-                                    if (errors.club) {
-                                      setErrors((prev) => {
-                                        const newErrors = { ...prev };
-                                        delete newErrors.club;
-                                        return newErrors;
-                                      });
-                                    }
-                                  }}
-                                  placeholder="Escribe el nombre del equipo"
-                                  {...(field.required && clubNotInList ? { required: true } : {})}
-                                  className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                                />
-                              )}
-
-                              {errors.club && (
-                                <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
-                              )}
-                            </div>
-                          );
-                        }
-
-                        return renderField(field);
-                      })}
+                      .map((field) => renderField(field))}
                   </>
                 )}
 
                 {/* Campos opcionales - Solo mostrar en paso 1 o si no es categoría de parejas */}
                 {!(isPairCategory && currentStep === 2) && optionalFields
                   .filter((field) => field.name !== 'gender' && field.name !== 'category_id') // Excluir gender y category_id
-                  .map((field) => {
-                    if (field.name === 'club_id' || field.name === 'club') {
-                      return (
-                        <div key={field.name} className="space-y-2">
-                          <label className="block text-white-pure text-sm font-medium mb-2">
-                            {field.label}
-                          </label>
-
-                          <Select
-                            options={[
-                              { value: 'independent', label: 'Independiente' },
-                              ...clubs.map((club) => ({
-                                value: club.id,
-                                label: club.name,
-                              }))
-                            ]}
-                            value={selectedClubId ? (
-                              selectedClubId === 'independent'
-                                ? { value: 'independent', label: 'Independiente' }
-                                : clubs.find(c => c.id === selectedClubId)
-                                  ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
-                                  : null
-                            ) : null}
-                            onChange={(option) => {
-                              const value = option?.value || '';
-                              setSelectedClubId(value);
-                              handleChange('club_id', value);
-                              handleChange('club', '');
-                            }}
-                            isDisabled={clubNotInList}
-                            isClearable
-                            placeholder="Buscar equipo (opcional)..."
-                            noOptionsMessage={() => "No se encontraron equipos"}
-                            styles={{
-                              control: (base, state) => ({
-                                ...base,
-                                backgroundColor: '#212121',
-                                borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
-                                borderWidth: '1px',
-                                borderRadius: '0.5rem',
-                                padding: '0.25rem',
-                                boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
-                                '&:hover': {
-                                  borderColor: '#FF5722',
-                                },
-                                opacity: clubNotInList ? 0.5 : 1,
-                                cursor: clubNotInList ? 'not-allowed' : 'default',
-                              }),
-                              menu: (base) => ({
-                                ...base,
-                                backgroundColor: '#212121',
-                                border: '1px solid rgba(255, 255, 255, 0.2)',
-                                borderRadius: '0.5rem',
-                              }),
-                              option: (base, state) => ({
-                                ...base,
-                                backgroundColor: state.isFocused ? '#FF5722' : '#212121',
-                                color: '#FFF',
-                                cursor: 'pointer',
-                                '&:active': {
-                                  backgroundColor: '#E64A19',
-                                },
-                              }),
-                              singleValue: (base) => ({
-                                ...base,
-                                color: '#FFF',
-                              }),
-                              input: (base) => ({
-                                ...base,
-                                color: '#FFF',
-                              }),
-                              placeholder: (base) => ({
-                                ...base,
-                                color: 'rgba(255, 255, 255, 0.5)',
-                              }),
-                            }}
-                          />
-
-                          <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
-                            <input
-                              type="checkbox"
-                              checked={clubNotInList}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setClubNotInList(checked);
-                                // Limpiar errores de validación del club
-                                setErrors((prev) => {
-                                  const newErrors = { ...prev };
-                                  delete newErrors.club;
-                                  return newErrors;
-                                });
-                                if (checked) {
-                                  // Al marcar: deshabilitar select, limpiar selectedClubId, mostrar input
-                                  setSelectedClubId('');
-                                  handleChange('club_id', '');
-                                } else {
-                                  // Al desmarcar: habilitar select, limpiar manualClubName, ocultar input
-                                  setManualClubName('');
-                                  handleChange('club', '');
-                                }
-                              }}
-                              className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
-                            />
-                            <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
-                          </label>
-
-                          {clubNotInList && (
-                            <input
-                              type="text"
-                              value={manualClubName}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                setManualClubName(value);
-                                handleChange('club', value);
-                                handleChange('club_id', '');
-                                // Limpiar error de validación cuando el usuario escribe
-                                if (errors.club) {
-                                  setErrors((prev) => {
-                                    const newErrors = { ...prev };
-                                    delete newErrors.club;
-                                    return newErrors;
-                                  });
-                                }
-                              }}
-                              placeholder="Escribe el nombre del equipo"
-                              {...(field.required && clubNotInList ? { required: true } : {})}
-                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                            />
-                          )}
-                        </div>
-                      );
-                    }
-
-                    return renderField(field);
-                  })}
+                  .map((field) => renderField(field))}
               </div>
 
               {/* Campos del segundo competidor (solo para categorías de parejas en paso 2) */}
@@ -1895,147 +2038,152 @@ export default function RegistrationModal({
                     </h3>
                   </div>
 
+                  {/* Campo de Club para competidor 2 */}
+                  {hasClubField && (
+                    <div
+                      ref={(el) => registerFieldErrorRef('club', el)}
+                      data-field-error="club"
+                      className="space-y-2"
+                    >
+                      <label className="block text-white-pure text-sm font-medium mb-2">
+                        Club/Equipo
+                        {clubFieldRequired && <span className="text-red-fire ml-1">*</span>}
+                      </label>
+
+                      <Select
+                        options={[
+                          { value: 'independent', label: 'Independiente' },
+                          ...clubs.map((club) => ({
+                            value: club.id,
+                            label: club.name,
+                          }))
+                        ]}
+                        value={selectedClubId ? (
+                          selectedClubId === 'independent'
+                            ? { value: 'independent', label: 'Independiente' }
+                            : clubs.find(c => c.id === selectedClubId)
+                              ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
+                              : null
+                        ) : null}
+                        onChange={(option) => {
+                          const value = option?.value || '';
+                          setSelectedClubId(value);
+                          handleChange('club_id', value);
+                          handleChange('club', '');
+                        }}
+                        isDisabled={clubNotInList}
+                        isClearable
+                        placeholder={clubFieldRequired ? "Buscar equipo..." : "Buscar equipo (opcional)..."}
+                        noOptionsMessage={() => "No se encontraron equipos"}
+                        styles={{
+                          control: (base, state) => ({
+                            ...base,
+                            backgroundColor: '#212121',
+                            borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: '1px',
+                            borderRadius: '0.5rem',
+                            padding: '0.25rem',
+                            boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
+                            '&:hover': {
+                              borderColor: '#FF5722',
+                            },
+                            opacity: clubNotInList ? 0.5 : 1,
+                            cursor: clubNotInList ? 'not-allowed' : 'default',
+                          }),
+                          menu: (base) => ({
+                            ...base,
+                            backgroundColor: '#212121',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '0.5rem',
+                          }),
+                          option: (base, state) => ({
+                            ...base,
+                            backgroundColor: state.isFocused ? '#FF5722' : '#212121',
+                            color: '#FFF',
+                            cursor: 'pointer',
+                            '&:active': {
+                              backgroundColor: '#E64A19',
+                            },
+                          }),
+                          singleValue: (base) => ({
+                            ...base,
+                            color: '#FFF',
+                          }),
+                          input: (base) => ({
+                            ...base,
+                            color: '#FFF',
+                          }),
+                          placeholder: (base) => ({
+                            ...base,
+                            color: 'rgba(255, 255, 255, 0.5)',
+                          }),
+                        }}
+                      />
+
+                      {showClubNotInList && (
+                        <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={clubNotInList}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setClubNotInList(checked);
+                              setClubDuplicateError('');
+                              setErrors((prev) => {
+                                const newErrors = { ...prev };
+                                delete newErrors.club;
+                                return newErrors;
+                              });
+                              if (checked) {
+                                setSelectedClubId('');
+                                handleChange('club_id', '');
+                                setExistingClubPhoto(null);
+                              } else {
+                                setManualClubName('');
+                                handleChange('club', '');
+                              }
+                            }}
+                            className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
+                          />
+                          <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
+                        </label>
+                      )}
+
+                      {clubNotInList && (
+                        <input
+                          type="text"
+                          value={manualClubName}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setManualClubName(value);
+                            handleChange('club', value);
+                            handleChange('club_id', '');
+                            if (errors.club) {
+                              setErrors((prev) => {
+                                const newErrors = { ...prev };
+                                delete newErrors.club;
+                                return newErrors;
+                              });
+                            }
+                          }}
+                          placeholder="Escribe el nombre del equipo"
+                          {...(clubFieldRequired && clubNotInList ? { required: true } : {})}
+                          className="mt-2 w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                        />
+                      )}
+
+                      {errors.club && (
+                        <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Renderizar TODOS los campos para el competidor 2 */}
                   {/* Primero los campos obligatorios */}
                   {requiredFields
                     .filter((field) => !['gender', 'category_id'].includes(field.name))
                     .map((field) => {
                       const isEmailField = field.name === 'email';
-                      const isClubField = field.name === 'club_id' || field.name === 'club';
-
-                      // Renderizado especial para el campo de club
-                      if (isClubField) {
-                        return (
-                          <div key={`comp2_${field.name}`}>
-                            <label className="block text-white-pure text-sm font-medium mb-2">
-                              {field.label}
-                              {field.required && <span className="text-red-fire ml-1">*</span>}
-                            </label>
-
-                            <Select
-                              options={[
-                                { value: 'independent', label: 'Independiente' },
-                                ...clubs.map((club) => ({
-                                  value: club.id,
-                                  label: club.name,
-                                }))
-                              ]}
-                              value={selectedClubId ? (
-                                selectedClubId === 'independent'
-                                  ? { value: 'independent', label: 'Independiente' }
-                                  : clubs.find(c => c.id === selectedClubId)
-                                    ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
-                                    : null
-                              ) : null}
-                              onChange={(option) => {
-                                const value = option?.value || '';
-                                setSelectedClubId(value);
-                                handleChange('club_id', value);
-                                handleChange('club', '');
-                              }}
-                              isDisabled={clubNotInList}
-                              isClearable
-                              placeholder="Buscar equipo..."
-                              noOptionsMessage={() => "No se encontraron equipos"}
-                              styles={{
-                                control: (base, state) => ({
-                                  ...base,
-                                  backgroundColor: '#212121',
-                                  borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
-                                  borderWidth: '1px',
-                                  borderRadius: '0.5rem',
-                                  padding: '0.25rem',
-                                  boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
-                                  '&:hover': {
-                                    borderColor: '#FF5722',
-                                  },
-                                  opacity: clubNotInList ? 0.5 : 1,
-                                  cursor: clubNotInList ? 'not-allowed' : 'default',
-                                }),
-                                menu: (base) => ({
-                                  ...base,
-                                  backgroundColor: '#212121',
-                                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                                  borderRadius: '0.5rem',
-                                }),
-                                option: (base, state) => ({
-                                  ...base,
-                                  backgroundColor: state.isFocused ? '#FF5722' : '#212121',
-                                  color: '#FFF',
-                                  cursor: 'pointer',
-                                  '&:active': {
-                                    backgroundColor: '#E64A19',
-                                  },
-                                }),
-                                singleValue: (base) => ({
-                                  ...base,
-                                  color: '#FFF',
-                                }),
-                                input: (base) => ({
-                                  ...base,
-                                  color: '#FFF',
-                                }),
-                                placeholder: (base) => ({
-                                  ...base,
-                                  color: 'rgba(255, 255, 255, 0.5)',
-                                }),
-                              }}
-                            />
-
-                            <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
-                              <input
-                                type="checkbox"
-                                checked={clubNotInList}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  setClubNotInList(checked);
-                                  setErrors((prev) => {
-                                    const newErrors = { ...prev };
-                                    delete newErrors.club;
-                                    return newErrors;
-                                  });
-                                  if (checked) {
-                                    setSelectedClubId('');
-                                    handleChange('club_id', '');
-                                  } else {
-                                    setManualClubName('');
-                                    handleChange('club', '');
-                                  }
-                                }}
-                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
-                              />
-                              <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
-                            </label>
-
-                            {clubNotInList && (
-                              <input
-                                type="text"
-                                value={manualClubName}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setManualClubName(value);
-                                  handleChange('club', value);
-                                  handleChange('club_id', '');
-                                  if (errors.club) {
-                                    setErrors((prev) => {
-                                      const newErrors = { ...prev };
-                                      delete newErrors.club;
-                                      return newErrors;
-                                    });
-                                  }
-                                }}
-                                placeholder="Escribe el nombre del equipo"
-                                required={field.required && clubNotInList}
-                                className="mt-2 w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                              />
-                            )}
-
-                            {errors.club && (
-                              <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
-                            )}
-                          </div>
-                        );
-                      }
 
                       return (
                         <div key={`comp2_${field.name}`}>
@@ -2136,198 +2284,63 @@ export default function RegistrationModal({
                   {/* Luego los campos opcionales */}
                   {optionalFields
                     .filter((field) => !['gender', 'category_id'].includes(field.name))
-                    .map((field) => {
-                      const isClubField = field.name === 'club_id' || field.name === 'club';
-
-                      // Renderizado especial para el campo de club
-                      if (isClubField) {
-                        return (
-                          <div key={`comp2_opt_${field.name}`}>
-                            <label className="block text-white-pure text-sm font-medium mb-2">
-                              {field.label}
-                            </label>
-
-                            <Select
-                              options={[
-                                { value: 'independent', label: 'Independiente' },
-                                ...clubs.map((club) => ({
-                                  value: club.id,
-                                  label: club.name,
-                                }))
-                              ]}
-                              value={selectedClubId ? (
-                                selectedClubId === 'independent'
-                                  ? { value: 'independent', label: 'Independiente' }
-                                  : clubs.find(c => c.id === selectedClubId)
-                                    ? { value: selectedClubId, label: clubs.find(c => c.id === selectedClubId)!.name }
-                                    : null
-                              ) : null}
-                              onChange={(option) => {
-                                const value = option?.value || '';
-                                setSelectedClubId(value);
-                                handleChange('club_id', value);
-                                handleChange('club', '');
-                              }}
-                              isDisabled={clubNotInList}
-                              isClearable
-                              placeholder="Buscar equipo..."
-                              noOptionsMessage={() => "No se encontraron equipos"}
-                              styles={{
-                                control: (base, state) => ({
-                                  ...base,
-                                  backgroundColor: '#212121',
-                                  borderColor: state.isFocused ? '#FF5722' : 'rgba(255, 255, 255, 0.2)',
-                                  borderWidth: '1px',
-                                  borderRadius: '0.5rem',
-                                  padding: '0.25rem',
-                                  boxShadow: state.isFocused ? '0 0 0 2px #FF5722' : 'none',
-                                  '&:hover': {
-                                    borderColor: '#FF5722',
-                                  },
-                                  opacity: clubNotInList ? 0.5 : 1,
-                                  cursor: clubNotInList ? 'not-allowed' : 'default',
-                                }),
-                                menu: (base) => ({
-                                  ...base,
-                                  backgroundColor: '#212121',
-                                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                                  borderRadius: '0.5rem',
-                                }),
-                                option: (base, state) => ({
-                                  ...base,
-                                  backgroundColor: state.isFocused ? '#FF5722' : '#212121',
-                                  color: '#FFF',
-                                  cursor: 'pointer',
-                                  '&:active': {
-                                    backgroundColor: '#E64A19',
-                                  },
-                                }),
-                                singleValue: (base) => ({
-                                  ...base,
-                                  color: '#FFF',
-                                }),
-                                input: (base) => ({
-                                  ...base,
-                                  color: '#FFF',
-                                }),
-                                placeholder: (base) => ({
-                                  ...base,
-                                  color: 'rgba(255, 255, 255, 0.5)',
-                                }),
-                              }}
-                            />
-
-                            <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
-                              <input
-                                type="checkbox"
-                                checked={clubNotInList}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  setClubNotInList(checked);
-                                  setErrors((prev) => {
-                                    const newErrors = { ...prev };
-                                    delete newErrors.club;
-                                    return newErrors;
-                                  });
-                                  if (checked) {
-                                    setSelectedClubId('');
-                                    handleChange('club_id', '');
-                                  } else {
-                                    setManualClubName('');
-                                    handleChange('club', '');
-                                  }
-                                }}
-                                className="w-5 h-5 text-orange-primary bg-black-asphalt border-orange-primary rounded focus:ring-orange-primary focus:ring-2"
-                              />
-                              <span className="ml-3 text-white-pure text-sm font-semibold">Mi club no está en la lista</span>
-                            </label>
-
-                            {clubNotInList && (
-                              <input
-                                type="text"
-                                value={manualClubName}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setManualClubName(value);
-                                  handleChange('club', value);
-                                  handleChange('club_id', '');
-                                  if (errors.club) {
-                                    setErrors((prev) => {
-                                      const newErrors = { ...prev };
-                                      delete newErrors.club;
-                                      return newErrors;
-                                    });
-                                  }
-                                }}
-                                placeholder="Escribe el nombre del equipo"
-                                className="mt-2 w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                              />
-                            )}
-
-                            {errors.club && (
-                              <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div key={`comp2_opt_${field.name}`}>
-                          <label className="block text-white-pure text-sm font-medium mb-2">
-                            {field.label}
-                          </label>
-                          {field.type === 'textarea' ? (
-                            <textarea
-                              value={formData[field.name] || ''}
-                              onChange={(e) => handleChange(field.name, e.target.value)}
-                              rows={4}
-                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
-                            />
-                          ) : field.type === 'select' && field.name === 'blood_type' ? (
-                            <select
-                              value={formData[field.name] || ''}
-                              onChange={(e) => handleChange(field.name, e.target.value)}
-                              className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                              style={{ backgroundColor: '#212121', color: '#FFF' }}
-                            >
-                              <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tipo de sangre</option>
-                              {field.options?.map((opt) => (
-                                <option key={opt.value} value={opt.value} style={{ backgroundColor: '#212121', color: '#FFF' }}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : field.type === 'file' ? (
-                            <input
-                              type="file"
-                              accept="image/jpeg,image/jpg,image/png"
-                              onChange={(e) => handleFileChange(field.name, e.target.files?.[0] || null)}
-                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-primary file:text-white-pure hover:file:bg-red-fire"
-                            />
-                          ) : (
-                            <input
-                              type={field.type}
-                              value={formData[field.name] || ''}
-                              onChange={(e) => {
-                                if (field.type === 'tel' || field.name === 'phone' || field.name === 'emergency_contact_phone') {
-                                  const value = e.target.value.replace(/\D/g, '');
-                                  if (value.length <= 10) {
-                                    handleChange(field.name, value);
-                                  }
-                                } else {
-                                  handleChange(field.name, e.target.value);
+                    .map((field) => (
+                      <div key={`comp2_opt_${field.name}`}>
+                        <label className="block text-white-pure text-sm font-medium mb-2">
+                          {field.label}
+                        </label>
+                        {field.type === 'textarea' ? (
+                          <textarea
+                            value={formData[field.name] || ''}
+                            onChange={(e) => handleChange(field.name, e.target.value)}
+                            rows={4}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
+                          />
+                        ) : field.type === 'select' && field.name === 'blood_type' ? (
+                          <select
+                            value={formData[field.name] || ''}
+                            onChange={(e) => handleChange(field.name, e.target.value)}
+                            className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                            style={{ backgroundColor: '#212121', color: '#FFF' }}
+                          >
+                            <option value="" style={{ backgroundColor: '#212121', color: '#FFF' }}>Selecciona tipo de sangre</option>
+                            {field.options?.map((opt) => (
+                              <option key={opt.value} value={opt.value} style={{ backgroundColor: '#212121', color: '#FFF' }}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : field.type === 'file' ? (
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/jpg,image/png"
+                            onChange={(e) => handleFileChange(field.name, e.target.files?.[0] || null)}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-primary file:text-white-pure hover:file:bg-red-fire"
+                          />
+                        ) : (
+                          <input
+                            type={field.type}
+                            value={formData[field.name] || ''}
+                            onChange={(e) => {
+                              if (field.type === 'tel' || field.name === 'phone' || field.name === 'emergency_contact_phone') {
+                                const value = e.target.value.replace(/\D/g, '');
+                                if (value.length <= 10) {
+                                  handleChange(field.name, value);
                                 }
-                              }}
-                              maxLength={field.type === 'tel' ? 10 : undefined}
-                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                            />
-                          )}
-                          {errors[field.name] && (
-                            <p className="mt-1 text-sm text-red-fire">{errors[field.name]}</p>
-                          )}
-                        </div>
-                      );
-                    })}
+                              } else {
+                                handleChange(field.name, e.target.value);
+                              }
+                            }}
+                            maxLength={field.type === 'tel' ? 10 : undefined}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                          />
+                        )}
+                        {errors[field.name] && (
+                          <p className="mt-1 text-sm text-red-fire">{errors[field.name]}</p>
+                        )}
+                      </div>
+                    )
+                    )}
                 </div>
               )}
 
