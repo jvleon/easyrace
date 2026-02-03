@@ -186,6 +186,23 @@ function renderSlateNode(node: SlateNode): string {
 
   // Renderizar párrafos
   if (node.type === 'paragraph') {
+    // Verificar si el contenido de texto real está vacío (ignorando estilos/tags HTML)
+    const hasRealContent = node.children.some((child: any) => {
+      if ('text' in child) {
+        return child.text && child.text.trim() !== '';
+      }
+      // Para links e imágenes, siempre tienen contenido real
+      if (child.type === 'link' || child.type === 'image') {
+        return true;
+      }
+      return false;
+    });
+
+    if (!hasRealContent) {
+      // Párrafo vacío - agregar <br> para mantener el salto de línea visible
+      return `<p class="my-4 ${alignClass}"><br /></p>`;
+    }
+
     const content = node.children
       .map((child: any) => renderChild(child))
       .join('');

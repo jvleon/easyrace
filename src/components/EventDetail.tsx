@@ -11,7 +11,7 @@ import KitsSection from './KitsSection';
 import PaymentProofModal from './PaymentProofModal';
 import EventGallery from './EventGallery';
 import EventNavigation from './EventNavigation';
-import { FiDownload, FiUpload, FiHome, FiInfo, FiPackage, FiList, FiImage } from 'react-icons/fi';
+import { FiDownload, FiUpload, FiHome, FiInfo, FiPackage, FiList, FiImage, FiFileText } from 'react-icons/fi';
 import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa';
 import type { MouseEventHandler } from 'react';
 interface EventDetailProps {
@@ -58,6 +58,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPaymentProofModalOpen, setIsPaymentProofModalOpen] = useState(false);
+  const [isRegulationsExpanded, setIsRegulationsExpanded] = useState(false);
 
   useEffect(() => {
     // Siempre obtener el slug desde la URL del navegador para que funcione con eventos nuevos
@@ -391,6 +392,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
         sections={[
           { id: 'inicio', label: 'Inicio', icon: <FiHome className="w-5 h-5" /> },
           { id: 'datos-evento', label: 'Datos del Evento', icon: <FiInfo className="w-5 h-5" /> },
+          ...(event?.regulations ? [{ id: 'reglamento', label: 'Reglamento', icon: <FiFileText className="w-5 h-5" /> }] : []),
           { id: 'kits', label: 'Kits', icon: <FiPackage className="w-5 h-5" /> },
           { id: 'categorias', label: 'Categorías', icon: <FiList className="w-5 h-5" /> },
           { id: 'fotos', label: 'Fotos', icon: <FiImage className="w-5 h-5" /> },
@@ -526,6 +528,43 @@ export default function EventDetail({ slug }: EventDetailProps) {
               </div>
             )}
           </div>
+
+          {/* Sección de Reglamento */}
+          {event.regulations && (
+            <div id="reglamento" className="scroll-mt-32 mb-12">
+              <div className="border border-white-pure/20 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setIsRegulationsExpanded(!isRegulationsExpanded)}
+                  className="w-full flex items-center justify-between p-4 md:p-6 bg-white-pure/5 hover:bg-white-pure/10 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <FiFileText className="w-6 h-6 text-orange-primary" />
+                    <h2 className="text-xl md:text-2xl font-bold text-white-pure">
+                      Reglamento Oficial
+                    </h2>
+                  </div>
+                  <svg
+                    className={`w-6 h-6 text-white-pure transition-transform duration-300 ${isRegulationsExpanded ? 'rotate-180' : ''
+                      }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {isRegulationsExpanded && (
+                  <div className="p-4 md:p-6 bg-black-asphalt/30">
+                    <div
+                      className="prose prose-invert max-w-none text-white-pure"
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(slateToHtml(event.regulations)) }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Sección de Kits */}
           <div id="kits" className="scroll-mt-32">
