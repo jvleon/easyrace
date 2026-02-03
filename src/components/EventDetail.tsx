@@ -544,9 +544,8 @@ export default function EventDetail({ slug }: EventDetailProps) {
                     </h2>
                   </div>
                   <svg
-                    className={`w-6 h-6 text-white-pure transition-transform duration-300 ${
-                      isRegulationsExpanded ? 'rotate-180' : ''
-                    }`}
+                    className={`w-6 h-6 text-white-pure transition-transform duration-300 ${isRegulationsExpanded ? 'rotate-180' : ''
+                      }`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -554,7 +553,7 @@ export default function EventDetail({ slug }: EventDetailProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                
+
                 {isRegulationsExpanded && (
                   <div className="p-4 md:p-6 bg-black-asphalt/30">
                     <div
