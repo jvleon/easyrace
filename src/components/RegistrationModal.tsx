@@ -110,6 +110,7 @@ export default function RegistrationModal({
   const [competitor2Data, setCompetitor2Data] = useState<Record<string, any>>({});
   const [showCategoryChangeWarning, setShowCategoryChangeWarning] = useState(false);
   const [pendingCategoryChange, setPendingCategoryChange] = useState<string | null>(null);
+  const [useCompetitor1Club, setUseCompetitor1Club] = useState<boolean>(false);
 
   // Refs para scroll automático al error
   const errorRef = useRef<HTMLDivElement>(null);
@@ -227,6 +228,7 @@ export default function RegistrationModal({
     setSelectedKitId('');
     setSelectedKitSizeId('');
     setIsPairCategory(false);
+    setUseCompetitor1Club(false);
     setPairFormData({});
     setPairErrors({});
     setKits([]);
@@ -735,8 +737,13 @@ export default function RegistrationModal({
 
     try {
       // Si es email del segundo competidor en parejas, permitir que sea el mismo que el primero
-      if (isPairCategory && isPairEmail && formData.email) {
-        const firstEmail = formData.email.trim().toLowerCase();
+      // En paso 2, el email del C1 está en competitor1Data, no en formData (que ya se limpió)
+      const competitor1Email = (isPairCategory && currentStep === 2)
+        ? competitor1Data.email
+        : formData.email;
+
+      if (isPairCategory && isPairEmail && competitor1Email) {
+        const firstEmail = competitor1Email.trim().toLowerCase();
         const secondEmail = emailValue.trim().toLowerCase();
 
         // Si ambos emails son iguales, permitirlo (parejas pueden compartir email)
@@ -1083,6 +1090,10 @@ export default function RegistrationModal({
         club_not_in_list: clubNotInList,
         selected_club_id: selectedClubId,
         manual_club_name: manualClubName,
+        // Guardar datos del nuevo club para que no se sobrescriban
+        new_club_city: newClubCity,
+        new_club_state: newClubState,
+        new_club_logo: newClubLogo,
       });
 
       // Verificar si la categoría es mixta
@@ -1110,6 +1121,12 @@ export default function RegistrationModal({
         setSelectedClubId('');
         setManualClubName('');
         setSelectedKitSizeId(''); // Cada competidor elige su propia talla
+        setUseCompetitor1Club(false); // Resetear opción de usar equipo del C1
+        // Limpiar estados de nuevo club (los del C1 ya están guardados en competitor1Data)
+        setNewClubCity('');
+        setNewClubState('');
+        setNewClubLogo(null);
+        setClubDuplicateError('');
 
         // Mantener género si NO es mixta, limpiar si ES mixta
         if (!isMixedCategory) {
@@ -1315,6 +1332,10 @@ export default function RegistrationModal({
       const sourceClubNotInList = (isPairCategory && currentStep === 2) ? competitor1Data.club_not_in_list : clubNotInList;
       const sourceSelectedClubId = (isPairCategory && currentStep === 2) ? competitor1Data.selected_club_id : selectedClubId;
       const sourceManualClubName = (isPairCategory && currentStep === 2) ? competitor1Data.manual_club_name : manualClubName;
+      // Datos del nuevo club: usar los guardados del C1 cuando corresponda
+      const sourceNewClubCity = (isPairCategory && currentStep === 2) ? competitor1Data.new_club_city : newClubCity;
+      const sourceNewClubState = (isPairCategory && currentStep === 2) ? competitor1Data.new_club_state : newClubState;
+      const sourceNewClubLogo = (isPairCategory && currentStep === 2) ? competitor1Data.new_club_logo : newClubLogo;
 
       const competitorData: Record<string, any> = {
         event_id: eventId,
@@ -1381,10 +1402,10 @@ export default function RegistrationModal({
           let newClubLogoUrl: string | null = null;
 
           // Subir logo si se proporcionó
-          if (newClubLogo) {
+          if (sourceNewClubLogo) {
             try {
               newClubLogoUrl = await uploadClubLogoToCloudflare(
-                newClubLogo,
+                sourceNewClubLogo,
                 sourceManualClubName.trim(),
                 eventSlug,
                 eventId
@@ -1397,14 +1418,14 @@ export default function RegistrationModal({
           // Crear el club pendiente (defensivo - puede fallar si columnas no existen)
           const newClubData: Record<string, any> = {
             name: sourceManualClubName.trim(),
-            city: newClubCity || null,
+            city: sourceNewClubCity || null,
             status: 'pending',
             logo_url: newClubLogoUrl,
           };
 
           // Agregar state si está disponible
-          if (newClubState) {
-            newClubData.state = newClubState;
+          if (sourceNewClubState) {
+            newClubData.state = sourceNewClubState;
           }
 
           const { data: createdClub, error: clubError } = await supabase
@@ -1494,6 +1515,62 @@ export default function RegistrationModal({
         } else if (clubNotInList && manualClubName.trim()) {
           pairCompetitorData.club = manualClubName.trim();
           pairCompetitorData.club_id = null;
+
+          // Si el C2 está registrando su propio equipo nuevo (no usando el del C1),
+          // crear el club pendiente con sus datos de ciudad/estado/logo
+          if (!useCompetitor1Club) {
+            try {
+              let newClubLogoUrl: string | null = null;
+
+              // Subir logo si se proporcionó
+              if (newClubLogo) {
+                try {
+                  newClubLogoUrl = await uploadClubLogoToCloudflare(
+                    newClubLogo,
+                    manualClubName.trim(),
+                    eventSlug,
+                    eventId
+                  );
+                } catch (logoError) {
+                  console.warn('No se pudo subir el logo del nuevo club del C2:', logoError);
+                }
+              }
+
+              // Crear el club pendiente del C2
+              const newClubDataC2: Record<string, any> = {
+                name: manualClubName.trim(),
+                city: newClubCity || null,
+                status: 'pending',
+                logo_url: newClubLogoUrl,
+              };
+
+              if (newClubState) {
+                newClubDataC2.state = newClubState;
+              }
+
+              const { data: createdClubC2 } = await supabase
+                .from('clubs')
+                .insert(newClubDataC2)
+                .select('id')
+                .single();
+
+              if (createdClubC2?.id) {
+                pairCompetitorData.pending_club_id = createdClubC2.id;
+
+                // Agregar el deporte al club creado (mismo que el evento)
+                if (sportTypeId) {
+                  await supabase
+                    .from('club_sports')
+                    .insert({
+                      club_id: createdClubC2.id,
+                      sport_type_id: sportTypeId,
+                    });
+                }
+              }
+            } catch (clubError) {
+              console.warn('No se pudo crear el club pendiente del C2:', clubError);
+            }
+          }
         }
 
         // Formatear teléfonos del segundo competidor
@@ -1506,6 +1583,13 @@ export default function RegistrationModal({
 
         // Asegurar que kit_size_id no esté en pairCompetitorData (no existe en la BD)
         delete pairCompetitorData.kit_size_id;
+
+        // Si el email del C2 es igual al del C1, agregar flag para permitir duplicado
+        const competitor1Email = competitor1Data?.email?.trim().toLowerCase();
+        const competitor2Email = formData.email?.trim().toLowerCase();
+        if (competitor1Email && competitor2Email && competitor1Email === competitor2Email) {
+          pairCompetitorData.allow_duplicate_email = true;
+        }
 
         // Insertar segundo competidor usando función RPC
         const { data: pairInsertedData, error: pairError } = await supabase.rpc('insert_competitor', {
@@ -1613,7 +1697,7 @@ export default function RegistrationModal({
         style={{ transform: 'translate3d(0,0,0)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-black-asphalt border-b border-white-pure/20 p-6">
+        <div className="sticky top-0 z-10 bg-black-asphalt border-b border-white-pure/20 p-6">
           <div className="flex justify-between items-center mb-4">
             <h2 id="modal-title" className="text-2xl font-bold text-white-pure">
               {isPairCategory
@@ -2169,6 +2253,51 @@ export default function RegistrationModal({
                         {clubFieldRequired && <span className="text-red-fire ml-1">*</span>}
                       </label>
 
+                      {/* Checkbox para usar equipo del competidor 1 */}
+                      {competitor1Data.club_not_in_list && competitor1Data.manual_club_name && (
+                        <label className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all mb-3 ${useCompetitor1Club
+                          ? 'border-green-500 bg-green-500/20'
+                          : 'border-green-500/50 bg-green-500/10 hover:bg-green-500/20'
+                          }`}>
+                          <input
+                            type="checkbox"
+                            checked={useCompetitor1Club}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setUseCompetitor1Club(checked);
+                              // Limpiar errores de club
+                              setErrors((prev) => {
+                                const newErrors = { ...prev };
+                                delete newErrors.club;
+                                return newErrors;
+                              });
+                              if (checked) {
+                                // Copiar datos del equipo del competidor 1
+                                setClubNotInList(true);
+                                setManualClubName(competitor1Data.manual_club_name);
+                                setSelectedClubId('');
+                                handleChange('club', competitor1Data.manual_club_name);
+                                handleChange('club_id', '');
+                                // Limpiar datos de nuevo club (ya se usará el del C1)
+                                setNewClubCity('');
+                                setNewClubState('');
+                                setNewClubLogo(null);
+                                setClubDuplicateError('');
+                              } else {
+                                // Limpiar para permitir seleccionar/registrar otro equipo
+                                setClubNotInList(false);
+                                setManualClubName('');
+                                handleChange('club', '');
+                              }
+                            }}
+                            className="w-5 h-5 text-green-500 bg-black-asphalt border-green-500 rounded focus:ring-green-500 focus:ring-2"
+                          />
+                          <span className="ml-3 text-white-pure text-sm font-semibold">
+                            Utilizar equipo registrado: "{competitor1Data.manual_club_name}"
+                          </span>
+                        </label>
+                      )}
+
                       <Select
                         options={[
                           { value: 'independent', label: 'Independiente' },
@@ -2189,8 +2318,9 @@ export default function RegistrationModal({
                           setSelectedClubId(value);
                           handleChange('club_id', value);
                           handleChange('club', '');
+                          setUseCompetitor1Club(false); // Desmarcar uso del equipo del C1
                         }}
-                        isDisabled={clubNotInList}
+                        isDisabled={clubNotInList || useCompetitor1Club}
                         isClearable
                         placeholder={clubFieldRequired ? "Buscar equipo..." : "Buscar equipo (opcional)..."}
                         noOptionsMessage={() => "No se encontraron equipos"}
@@ -2239,7 +2369,7 @@ export default function RegistrationModal({
                         }}
                       />
 
-                      {showClubNotInList && (
+                      {showClubNotInList && !useCompetitor1Club && (
                         <label className={`flex items-center mt-3 p-3 rounded-lg border-2 border-orange-primary bg-orange-primary/10 cursor-pointer hover:bg-orange-primary/20 transition-all ${selectedClubId === 'independent' ? 'animate-pulse' : ''}`}>
                           <input
                             type="checkbox"
@@ -2254,6 +2384,7 @@ export default function RegistrationModal({
                                 return newErrors;
                               });
                               if (checked) {
+                                setUseCompetitor1Club(false); // Desmarcar uso del equipo del C1
                                 setSelectedClubId('');
                                 handleChange('club_id', '');
                                 setExistingClubPhoto(null);
@@ -2269,26 +2400,120 @@ export default function RegistrationModal({
                       )}
 
                       {clubNotInList && (
-                        <input
-                          type="text"
-                          value={manualClubName}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setManualClubName(value);
-                            handleChange('club', value);
-                            handleChange('club_id', '');
-                            if (errors.club) {
-                              setErrors((prev) => {
-                                const newErrors = { ...prev };
-                                delete newErrors.club;
-                                return newErrors;
-                              });
-                            }
-                          }}
-                          placeholder="Escribe el nombre del equipo"
-                          {...(clubFieldRequired && clubNotInList ? { required: true } : {})}
-                          className="mt-2 w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
-                        />
+                        <div className="space-y-3 mt-3 p-4 bg-white-pure/5 rounded-lg border border-white-pure/20">
+                          {useCompetitor1Club ? (
+                            <>
+                              <p className="text-sm text-green-400 flex items-center gap-2">
+                                <span className="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                                Usando el mismo equipo que el primer competidor
+                              </p>
+                              <input
+                                type="text"
+                                value={manualClubName}
+                                disabled
+                                className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure opacity-70 cursor-not-allowed"
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm text-gray-400 mb-2">Registra tu club para que otros competidores puedan encontrarlo en el futuro.</p>
+
+                              {/* Nombre del club */}
+                              <input
+                                type="text"
+                                value={manualClubName}
+                                onChange={async (e) => {
+                                  const value = e.target.value;
+                                  setManualClubName(value);
+                                  handleChange('club', value);
+                                  handleChange('club_id', '');
+                                  setClubDuplicateError('');
+                                  if (errors.club) {
+                                    setErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      delete newErrors.club;
+                                      return newErrors;
+                                    });
+                                  }
+                                }}
+                                onBlur={async () => {
+                                  // Validar duplicados al perder foco
+                                  if (manualClubName.trim() && sportTypeId) {
+                                    const { exists, matchedClub } = await checkClubExists(manualClubName.trim(), sportTypeId);
+                                    if (exists) {
+                                      setClubDuplicateError(`Ya existe un club aprobado con un nombre similar: "${matchedClub}". Por favor selecciónalo de la lista.`);
+                                    }
+                                  }
+                                }}
+                                placeholder="Nombre del equipo *"
+                                {...(clubFieldRequired && clubNotInList ? { required: true } : {})}
+                                className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              />
+                              {clubDuplicateError && (
+                                <p className="text-sm text-yellow-400">{clubDuplicateError}</p>
+                              )}
+
+                              {/* Ciudad del club */}
+                              <input
+                                type="text"
+                                value={newClubCity}
+                                onChange={(e) => setNewClubCity(e.target.value.slice(0, 50))}
+                                placeholder="Ciudad del club (opcional, máx 50 caracteres)"
+                                maxLength={50}
+                                className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              />
+
+                              {/* Estado del club */}
+                              <select
+                                value={newClubState}
+                                onChange={(e) => setNewClubState(e.target.value)}
+                                className="w-full px-4 py-2 bg-black-asphalt border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              >
+                                <option value="">Selecciona un estado (opcional)</option>
+                                {MEXICAN_STATES.map((state) => (
+                                  <option key={state} value={state}>{state}</option>
+                                ))}
+                              </select>
+
+                              {/* Logo del club */}
+                              <div>
+                                <label className="block text-sm text-gray-400 mb-1">Logo del club (opcional, PNG/JPG, máx 2MB)</label>
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/jpg"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0] || null;
+                                    if (file) {
+                                      // Validar tipo
+                                      if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+                                        setErrors((prev) => ({ ...prev, newClubLogo: 'Solo se permiten archivos PNG, JPG o JPEG' }));
+                                        return;
+                                      }
+                                      // Validar tamaño
+                                      if (file.size > 2 * 1024 * 1024) {
+                                        setErrors((prev) => ({ ...prev, newClubLogo: 'El archivo debe ser menor a 2MB' }));
+                                        return;
+                                      }
+                                      setErrors((prev) => {
+                                        const newErrors = { ...prev };
+                                        delete newErrors.newClubLogo;
+                                        return newErrors;
+                                      });
+                                    }
+                                    setNewClubLogo(file);
+                                  }}
+                                  className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:bg-orange-primary file:text-white-pure hover:file:bg-orange-primary/80"
+                                />
+                                {errors.newClubLogo && (
+                                  <p className="mt-1 text-sm text-red-fire">{errors.newClubLogo}</p>
+                                )}
+                                {newClubLogo && (
+                                  <p className="mt-1 text-sm text-green-400">Archivo seleccionado: {newClubLogo.name}</p>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
                       )}
 
                       {errors.club && (
