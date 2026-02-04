@@ -120,6 +120,12 @@ export default function RegistrationModal({
   const recaptchaRef = useRef<ReCAPTCHA>(null);
   const recaptchaContainerRef = useRef<HTMLDivElement>(null);
   const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || '';
+
+  // Detectar iOS para aplicar workarounds específicos
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+
+  // Estado para forzar re-mount del contenido del modal (fix iOS bfcache)
+  const [mountKey, setMountKey] = useState(0);
   // Refs para campos con errores (usando un objeto para mapear nombre de campo -> ref)
   const fieldErrorRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -195,14 +201,81 @@ export default function RegistrationModal({
     }
   }, [errors]);
 
+  // Función para resetear todos los estados del formulario
+  const resetFormState = () => {
+    setCurrentStep(1);
+    setCompetitor1Data({});
+    setCompetitor2Data({});
+    setShowCategoryChangeWarning(false);
+    setPendingCategoryChange(null);
+    setFormData({});
+    setErrors({});
+    setSuccess(false);
+    setSuccessMessage('');
+    setSubmitError(null);
+    setSubmitting(false);
+    setClubNotInList(false);
+    setSelectedClubId('');
+    setManualClubName('');
+    setNewClubCity('');
+    setNewClubState('');
+    setNewClubLogo(null);
+    setClubDuplicateError('');
+    setExistingClubPhoto(null);
+    setSelectedGender('');
+    setAcceptedTerms(false);
+    setSelectedKitId('');
+    setSelectedKitSizeId('');
+    setIsPairCategory(false);
+    setPairFormData({});
+    setPairErrors({});
+    setKits([]);
+    setKitSizes([]);
+    setRecaptchaToken(null);
+    recaptchaRef.current?.reset();
+  };
+
+  // Forzar repaint en iOS Safari (fix para bug de renderizado)
+  const forceIOSRepaint = () => {
+    if (modalContentRef.current) {
+      const element = modalContentRef.current;
+      // Forzar reflow múltiple con requestAnimationFrame para iOS WebKit
+      void element.offsetHeight;
+      element.style.transform = 'translateZ(0)';
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          void element.offsetHeight;
+          // Restaurar transform después del repaint
+          element.style.transform = 'translate3d(0,0,0)';
+        });
+      });
+    }
+  };
+
+  // Manejar restauración desde bfcache (back-forward cache) en iOS/Safari
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        // La página fue restaurada desde bfcache, resetear estados críticos
+        setSuccess(false);
+        setSubmitting(false);
+        setSubmitError(null);
+        // Forzar repaint después del reset
+        setTimeout(forceIOSRepaint, 50);
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
-      // Resetear estados de pasos
-      setCurrentStep(1);
-      setCompetitor1Data({});
-      setCompetitor2Data({});
-      setShowCategoryChangeWarning(false);
-      setPendingCategoryChange(null);
+      // Incrementar mountKey para forzar re-mount del contenido
+      setMountKey(prev => prev + 1);
+      // Resetear TODOS los estados del formulario
+      resetFormState();
 
       const parsedFields = parseRegistrationConfig(registrationConfig);
       // Ordenar campos: mantener orden de campos base (first_name, last_name, email) y luego el resto
@@ -230,32 +303,43 @@ export default function RegistrationModal({
       // Combinar: campos base en orden + otros campos ordenados + campos de emergencia al final
       const sortedFields = [...baseFields, ...sortedOtherFields, ...sortedEmergencyFields];
       setFields(sortedFields);
-      setFormData({});
-      setErrors({});
-      setSuccess(false);
-      setSuccessMessage('');
-      setSubmitError(null);
-      setClubNotInList(false);
-      setSelectedClubId('');
-      setManualClubName('');
-      setNewClubCity('');
-      setNewClubState('');
-      setNewClubLogo(null);
-      setClubDuplicateError('');
-      setExistingClubPhoto(null);
-      setSelectedGender('');
-      setAcceptedTerms(false);
-      setSelectedKitId('');
-      setSelectedKitSizeId('');
-      setIsPairCategory(false);
-      setPairFormData({});
-      setPairErrors({});
-      setKits([]);
-      setKitSizes([]);
       loadCategories();
       loadClubs();
+
+      // Múltiples repaints escalonados para iPhone 15 Pro y superiores
+      // Estos dispositivos necesitan más tiempo para re-componer las capas de WebKit
+      setTimeout(forceIOSRepaint, 50);   // Primer repaint inmediato
+      setTimeout(forceIOSRepaint, 150);  // Segundo repaint
+      setTimeout(forceIOSRepaint, 300);  // Tercer repaint (red de seguridad para iPhone 15 Pro)
+    } else {
+      // Cuando el modal se cierra, resetear estados críticos inmediatamente
+      // Esto previene problemas con bfcache en iOS donde el estado persiste
+      setSuccess(false);
+      setSubmitting(false);
+      setSubmitError(null);
     }
   }, [isOpen, registrationConfig, eventId, sportTypeId]);
+
+  // Detectar cuando el modal es visible y forzar repaint (fix iOS WebKit)
+  useEffect(() => {
+    if (!isOpen || !modalContentRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // Forzar repaint cuando el modal se vuelve visible
+            setTimeout(() => forceIOSRepaint(), 50);
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(modalContentRef.current);
+
+    return () => observer.disconnect();
+  }, [isOpen]);
 
   // Verificar si hay datos en el formulario
   const hasFormData = () => {
@@ -292,7 +376,7 @@ export default function RegistrationModal({
 
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, [isOpen, onClose, formData, selectedGender, selectedKitId, selectedClubId, manualClubName]);
 
@@ -573,7 +657,7 @@ export default function RegistrationModal({
             console.error('Error fetching all clubs fallback:', allClubsError);
           }
           // Filtrado defensivo: si no tiene status o es 'approved', mostrar
-          clubsData = (allClubs || []).filter((club: Club) => 
+          clubsData = (allClubs || []).filter((club: Club) =>
             !('status' in club) || club.status === 'approved' || club.status === null
           );
         }
@@ -588,7 +672,7 @@ export default function RegistrationModal({
           console.error('Error fetching all clubs:', allClubsError);
         }
         // Filtrado defensivo: si no tiene status o es 'approved', mostrar
-        clubsData = (allClubs || []).filter((club: Club) => 
+        clubsData = (allClubs || []).filter((club: Club) =>
           !('status' in club) || club.status === 'approved' || club.status === null
         );
       }
@@ -1266,7 +1350,7 @@ export default function RegistrationModal({
           competitorData.club_id = null;
         } else {
           competitorData.club_id = sourceSelectedClubId;
-          
+
           // Si hay foto de club existente sin logo, subirla y actualizar el club
           if (existingClubPhoto) {
             try {
@@ -1291,11 +1375,11 @@ export default function RegistrationModal({
         // Si el checkbox SÍ está marcado, guardar el nombre como club_text (NO club_id)
         competitorData.club = sourceManualClubName.trim();
         competitorData.club_id = null;
-        
+
         // Intentar crear un club pendiente para aprobación futura (defensivo)
         try {
           let newClubLogoUrl: string | null = null;
-          
+
           // Subir logo si se proporcionó
           if (newClubLogo) {
             try {
@@ -1309,7 +1393,7 @@ export default function RegistrationModal({
               console.warn('No se pudo subir el logo del nuevo club:', logoError);
             }
           }
-          
+
           // Crear el club pendiente (defensivo - puede fallar si columnas no existen)
           const newClubData: Record<string, any> = {
             name: sourceManualClubName.trim(),
@@ -1317,18 +1401,18 @@ export default function RegistrationModal({
             status: 'pending',
             logo_url: newClubLogoUrl,
           };
-          
+
           // Agregar state si está disponible
           if (newClubState) {
             newClubData.state = newClubState;
           }
-          
+
           const { data: createdClub, error: clubError } = await supabase
             .from('clubs')
             .insert(newClubData)
             .select('id')
             .single();
-          
+
           if (!clubError && createdClub) {
             // Agregar el deporte al club creado
             if (sportTypeId) {
@@ -1457,6 +1541,38 @@ export default function RegistrationModal({
       }
 
       setSuccess(true);
+
+      // Para iOS: forzar scroll para activar el repaint (workaround para bug de composición)
+      if (isIOS) {
+        // Scroll inmediato y múltiples intentos escalonados
+        setTimeout(() => {
+          const modalContent = document.getElementById('registration-modal-content');
+          if (modalContent) {
+            // Pequeño scroll hacia abajo y luego hacia arriba para forzar repaint
+            modalContent.scrollTop = 1;
+            requestAnimationFrame(() => {
+              modalContent.scrollTop = 0;
+            });
+          }
+        }, 0);
+
+        setTimeout(() => {
+          const modalContent = document.getElementById('registration-modal-content');
+          if (modalContent) {
+            modalContent.scrollTop = 1;
+            requestAnimationFrame(() => {
+              modalContent.scrollTop = 0;
+            });
+          }
+        }, 100);
+      }
+
+      // Forzar múltiples repaints para mostrar el mensaje de éxito en iPhone 15 Pro
+      // El cambio de success=false a success=true requiere re-composición de capas
+      setTimeout(forceIOSRepaint, 0);    // Repaint inmediato
+      setTimeout(forceIOSRepaint, 50);   // Segundo repaint
+      setTimeout(forceIOSRepaint, 150);  // Tercer repaint (red de seguridad para iPhone 15 Pro)
+
       // Resetear reCAPTCHA después de éxito
       setRecaptchaToken(null);
       recaptchaRef.current?.reset();
@@ -1482,16 +1598,19 @@ export default function RegistrationModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black-asphalt/80 backdrop-blur-sm animate-fade-in"
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in ${isIOS ? 'bg-black-asphalt/95' : 'bg-black-asphalt/80 backdrop-blur-sm'
+        }`}
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <div
+        key={mountKey}
         ref={modalContentRef}
         id="registration-modal-content"
         className="bg-black-asphalt border border-white-pure/20 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        style={{ transform: 'translate3d(0,0,0)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 bg-black-asphalt border-b border-white-pure/20 p-6">
@@ -1868,7 +1987,7 @@ export default function RegistrationModal({
                     {clubNotInList && (
                       <div className="space-y-3 mt-3 p-4 bg-white-pure/5 rounded-lg border border-white-pure/20">
                         <p className="text-sm text-gray-400 mb-2">Registra tu club para que otros competidores puedan encontrarlo en el futuro.</p>
-                        
+
                         {/* Nombre del club */}
                         <input
                           type="text"
@@ -1970,43 +2089,43 @@ export default function RegistrationModal({
                       const selectedClub = clubs.find(c => c.id === selectedClubId);
                       return selectedClub && !selectedClub.logo_url;
                     })() && (
-                      <div className="mt-3 p-3 bg-white-pure/5 rounded-lg border border-white-pure/20">
-                        <label className="block text-sm text-gray-400 mb-2">
-                          Tu club no tiene logo. ¿Quieres subir uno?
-                          {isExistingClubPhotoRequired(registrationConfig) && <span className="text-orange-primary ml-1">*</span>}
-                        </label>
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/jpg"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] || null;
-                            if (file) {
-                              if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
-                                setErrors((prev) => ({ ...prev, existingClubPhoto: 'Solo se permiten archivos PNG, JPG o JPEG' }));
-                                return;
+                        <div className="mt-3 p-3 bg-white-pure/5 rounded-lg border border-white-pure/20">
+                          <label className="block text-sm text-gray-400 mb-2">
+                            Tu club no tiene logo. ¿Quieres subir uno?
+                            {isExistingClubPhotoRequired(registrationConfig) && <span className="text-orange-primary ml-1">*</span>}
+                          </label>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] || null;
+                              if (file) {
+                                if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+                                  setErrors((prev) => ({ ...prev, existingClubPhoto: 'Solo se permiten archivos PNG, JPG o JPEG' }));
+                                  return;
+                                }
+                                if (file.size > 2 * 1024 * 1024) {
+                                  setErrors((prev) => ({ ...prev, existingClubPhoto: 'El archivo debe ser menor a 2MB' }));
+                                  return;
+                                }
+                                setErrors((prev) => {
+                                  const newErrors = { ...prev };
+                                  delete newErrors.existingClubPhoto;
+                                  return newErrors;
+                                });
                               }
-                              if (file.size > 2 * 1024 * 1024) {
-                                setErrors((prev) => ({ ...prev, existingClubPhoto: 'El archivo debe ser menor a 2MB' }));
-                                return;
-                              }
-                              setErrors((prev) => {
-                                const newErrors = { ...prev };
-                                delete newErrors.existingClubPhoto;
-                                return newErrors;
-                              });
-                            }
-                            setExistingClubPhoto(file);
-                          }}
-                          className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:bg-orange-primary file:text-white-pure hover:file:bg-orange-primary/80"
-                        />
-                        {errors.existingClubPhoto && (
-                          <p className="mt-1 text-sm text-red-fire">{errors.existingClubPhoto}</p>
-                        )}
-                        {existingClubPhoto && (
-                          <p className="mt-1 text-sm text-green-400">Archivo seleccionado: {existingClubPhoto.name}</p>
-                        )}
-                      </div>
-                    )}
+                              setExistingClubPhoto(file);
+                            }}
+                            className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:bg-orange-primary file:text-white-pure hover:file:bg-orange-primary/80"
+                          />
+                          {errors.existingClubPhoto && (
+                            <p className="mt-1 text-sm text-red-fire">{errors.existingClubPhoto}</p>
+                          )}
+                          {existingClubPhoto && (
+                            <p className="mt-1 text-sm text-green-400">Archivo seleccionado: {existingClubPhoto.name}</p>
+                          )}
+                        </div>
+                      )}
 
                     {!clubNotInList && errors.club && (
                       <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
