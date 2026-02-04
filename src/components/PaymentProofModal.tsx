@@ -283,6 +283,7 @@ export default function PaymentProofModal({
     >
       <div
         className="bg-black-asphalt border border-white-pure/20 rounded-lg shadow-2xl w-full max-w-md"
+        style={{ transform: 'translate3d(0,0,0)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 bg-black-asphalt border-b border-white-pure/20 p-6 flex justify-between items-center">
