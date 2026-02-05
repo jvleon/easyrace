@@ -13,7 +13,7 @@ const initSentry = () => {
   }
 
   Sentry.init({
-    dsn: 'https://f36c1642477f48ab2e498f7209bab0ff@o4510734822735872.ingest.us.sentry.io/4510734824046592',
+    dsn: 'https://56942e3edd1586a6bbb5a04c9a60ead5@o4510734822735872.ingest.us.sentry.io/4510734833352704',
     // Setting this option to true will send default PII data to Sentry.
     // For example, automatic IP address collection on events
     sendDefaultPii: true,

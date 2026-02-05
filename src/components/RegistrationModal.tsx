@@ -111,6 +111,7 @@ export default function RegistrationModal({
   const [showCategoryChangeWarning, setShowCategoryChangeWarning] = useState(false);
   const [pendingCategoryChange, setPendingCategoryChange] = useState<string | null>(null);
   const [useCompetitor1Club, setUseCompetitor1Club] = useState<boolean>(false);
+  const [useCompetitor1Email, setUseCompetitor1Email] = useState<boolean>(false);
 
   // Refs para scroll automático al error
   const errorRef = useRef<HTMLDivElement>(null);
@@ -2516,6 +2517,49 @@ export default function RegistrationModal({
                         </div>
                       )}
 
+                      {/* Foto para club existente sin logo - C2 */}
+                      {!clubNotInList && !useCompetitor1Club && selectedClubId && selectedClubId !== 'independent' && isExistingClubPhotoEnabled(registrationConfig) && (() => {
+                        const selectedClub = clubs.find(c => c.id === selectedClubId);
+                        return selectedClub && !selectedClub.logo_url;
+                      })() && (
+                          <div className="mt-3 p-3 bg-white-pure/5 rounded-lg border border-white-pure/20">
+                            <label className="block text-sm text-gray-400 mb-2">
+                              Tu club no tiene logo. ¿Quieres subir uno?
+                              {isExistingClubPhotoRequired(registrationConfig) && <span className="text-orange-primary ml-1">*</span>}
+                            </label>
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/jpg"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+                                if (file) {
+                                  if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+                                    setErrors((prev) => ({ ...prev, existingClubPhoto: 'Solo se permiten archivos PNG, JPG o JPEG' }));
+                                    return;
+                                  }
+                                  if (file.size > 2 * 1024 * 1024) {
+                                    setErrors((prev) => ({ ...prev, existingClubPhoto: 'El archivo debe ser menor a 2MB' }));
+                                    return;
+                                  }
+                                  setErrors((prev) => {
+                                    const newErrors = { ...prev };
+                                    delete newErrors.existingClubPhoto;
+                                    return newErrors;
+                                  });
+                                }
+                                setExistingClubPhoto(file);
+                              }}
+                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure file:mr-4 file:py-1 file:px-4 file:rounded file:border-0 file:text-sm file:bg-orange-primary file:text-white-pure hover:file:bg-orange-primary/80"
+                            />
+                            {errors.existingClubPhoto && (
+                              <p className="mt-1 text-sm text-red-fire">{errors.existingClubPhoto}</p>
+                            )}
+                            {existingClubPhoto && (
+                              <p className="mt-1 text-sm text-green-400">Archivo seleccionado: {existingClubPhoto.name}</p>
+                            )}
+                          </div>
+                        )}
+
                       {errors.club && (
                         <p className="mt-1 text-sm text-red-fire">{errors.club}</p>
                       )}
@@ -2536,6 +2580,48 @@ export default function RegistrationModal({
                             {/* Email NO es obligatorio para competidor 2 */}
                             {field.required && !isEmailField && <span className="text-red-fire ml-1">*</span>}
                           </label>
+
+                          {/* Checkbox para usar el mismo email del C1 */}
+                          {isEmailField && competitor1Data?.email && (
+                            <label className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all mb-3 ${useCompetitor1Email
+                              ? 'border-green-500 bg-green-500/10'
+                              : 'border-white-pure/20 bg-white-pure/5 hover:bg-white-pure/10'
+                              }`}>
+                              <input
+                                type="checkbox"
+                                checked={useCompetitor1Email}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setUseCompetitor1Email(checked);
+                                  if (checked) {
+                                    // Usar el email del C1
+                                    handleChange('email', competitor1Data.email);
+                                    // Limpiar errores de email
+                                    setPairErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      delete newErrors.pair_email;
+                                      return newErrors;
+                                    });
+                                    setErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      if (newErrors.email) {
+                                        delete newErrors.email;
+                                      }
+                                      return newErrors;
+                                    });
+                                  } else {
+                                    // Limpiar el email para que ingrese uno nuevo
+                                    handleChange('email', '');
+                                  }
+                                }}
+                                className="w-5 h-5 text-green-500 bg-black-asphalt border-green-500 rounded focus:ring-green-500 focus:ring-2"
+                              />
+                              <span className="ml-3 text-white-pure text-sm font-semibold">
+                                Usar el mismo correo que el competidor 1
+                              </span>
+                            </label>
+                          )}
+
                           {field.type === 'textarea' ? (
                             <textarea
                               value={formData[field.name] || ''}
@@ -2546,8 +2632,9 @@ export default function RegistrationModal({
                                 }
                               }}
                               required={field.required && !isEmailField}
+                              disabled={isEmailField && useCompetitor1Email}
                               rows={4}
-                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y"
+                              className={`w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent resize-y ${isEmailField && useCompetitor1Email ? 'opacity-70 cursor-not-allowed' : ''}`}
                             />
                           ) : field.type === 'select' && field.name === 'blood_type' ? (
                             <select
@@ -2605,13 +2692,14 @@ export default function RegistrationModal({
                                 }
                               }}
                               onBlur={async (e) => {
-                                if (isEmailField && e.target.value) {
+                                if (isEmailField && e.target.value && !useCompetitor1Email) {
                                   await validateEmailUnique(e.target.value, true);
                                 }
                               }}
                               maxLength={field.type === 'tel' ? 10 : undefined}
                               required={field.required && !isEmailField}
-                              className="w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent"
+                              disabled={isEmailField && useCompetitor1Email}
+                              className={`w-full px-4 py-2 bg-white-pure/10 border border-white-pure/20 rounded-lg text-white-pure focus:outline-none focus:ring-2 focus:ring-orange-primary focus:border-transparent ${isEmailField && useCompetitor1Email ? 'opacity-70 cursor-not-allowed' : ''}`}
                             />
                           )}
                           {/* Mostrar errores de email único del paso 2 */}
