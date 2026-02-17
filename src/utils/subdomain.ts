@@ -1,5 +1,5 @@
 /**
- * Detecta si la aplicación está siendo ejecutada en el subdominio demo
+ * Detecta si la aplicación está siendo ejecutada en el subdominio demo o staging
  * Funciona tanto en cliente (browser) como en servidor (Astro SSR)
  * También incluye localhost para desarrollo
  */
@@ -11,6 +11,8 @@ export function isDemoSubdomain(): boolean {
     return (
       hostname.startsWith('demo.') ||
       hostname === 'demo.easyrace.com.mx' ||
+      hostname.startsWith('staging.') ||
+      hostname === 'staging.easyrace.com.mx' ||
       hostname === 'localhost' ||
       hostname === '127.0.0.1'
     );
@@ -22,7 +24,7 @@ export function isDemoSubdomain(): boolean {
 }
 
 /**
- * Detecta si estamos en el subdominio demo usando el hostname directamente
+ * Detecta si estamos en el subdominio demo o staging usando el hostname directamente
  * Útil para casos donde no tenemos acceso a window
  * También incluye localhost para desarrollo
  */
@@ -30,6 +32,8 @@ export function isDemoSubdomainFromHostname(hostname: string): boolean {
   return (
     hostname.startsWith('demo.') ||
     hostname === 'demo.easyrace.com.mx' ||
+    hostname.startsWith('staging.') ||
+    hostname === 'staging.easyrace.com.mx' ||
     hostname === 'localhost' ||
     hostname === '127.0.0.1'
   );
