@@ -53,13 +53,22 @@ const cleanedSlug = slug || 'dynamic';
     <title>Evento - EasyRace</title>
     
     <link rel="preconnect" href="https://challenges.cloudflare.com">
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-H98RYPYQCQ"></script>
+
+    <!-- Staging/Demo guard: bloquea analytics e inyecta noindex -->
+    <script is:inline src="/staging-guard.js"></script>
+
+    <!-- Google tag (gtag.js) - No se carga en staging/demo -->
     <script is:inline>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-H98RYPYQCQ');
+      if (!window.__EASYRACE_BLOCK_ANALYTICS__) {
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=G-H98RYPYQCQ';
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-H98RYPYQCQ');
+      }
     </script>
   </head>
   <body class="min-h-screen bg-black-asphalt flex flex-col">
