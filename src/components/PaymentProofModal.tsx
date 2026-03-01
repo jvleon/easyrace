@@ -17,6 +17,8 @@ interface ValidationResult {
   is_registered: boolean;
   has_payment_proof: boolean;
   payment_confirmed: boolean;
+  payment_rejected?: boolean;
+  payment_rejection_reason?: string | null;
   email_exists?: boolean;
   phone_exists?: boolean;
 }
@@ -161,6 +163,10 @@ export default function PaymentProofModal({
         setError('No estás registrado en este evento. Por favor, regístrate primero.');
       } else if (result.payment_confirmed) {
         setError(null); // Se mostrará mensaje de éxito
+      } else if (result.payment_rejected) {
+        // Pago fue rechazado - permitir subir nuevo comprobante directamente
+        setShowReplaceConfirm(false);
+        setError(null);
       } else if (result.has_payment_proof && !result.payment_confirmed) {
         // Ya tiene comprobante pero no está confirmado, preguntar si desea reemplazarlo
         setShowReplaceConfirm(true);
@@ -415,6 +421,27 @@ export default function PaymentProofModal({
 
                 {validationResult?.is_registered && !validationResult.payment_confirmed && (
                   <>
+                    {validationResult.payment_rejected && (
+                      <div className="mb-4 p-4 bg-red-fire/20 border border-red-fire rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <FiAlertCircle className="text-red-fire mt-0.5 shrink-0" size={20} />
+                          <div>
+                            <p className="text-white-pure text-sm font-semibold mb-1">
+                              Tu comprobante fue rechazado
+                            </p>
+                            {validationResult.payment_rejection_reason && (
+                              <p className="text-white-pure/80 text-sm">
+                                Motivo: {validationResult.payment_rejection_reason}
+                              </p>
+                            )}
+                            <p className="text-white-pure/60 text-xs mt-2">
+                              Por favor, sube un nuevo comprobante de pago.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {showReplaceConfirm ? (
                       <div className="space-y-4">
                         <div className="p-4 bg-yellow-500/20 border border-yellow-500 rounded-lg">

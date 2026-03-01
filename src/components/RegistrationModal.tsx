@@ -113,6 +113,10 @@ export default function RegistrationModal({
   const [useCompetitor1Club, setUseCompetitor1Club] = useState<boolean>(false);
   const [useCompetitor1Email, setUseCompetitor1Email] = useState<boolean>(false);
 
+  // Estado para deadline de pago
+  const [paymentDeadlineHours, setPaymentDeadlineHours] = useState<number | null>(null);
+  const [paymentTimeLimitEnabled, setPaymentTimeLimitEnabled] = useState<boolean>(false);
+
   // Refs para scroll automático al error
   const errorRef = useRef<HTMLDivElement>(null);
   const modalContentRef = useRef<HTMLDivElement>(null);
@@ -427,6 +431,19 @@ export default function RegistrationModal({
       setAllCategories(loadedCategories);
       // Inicialmente no hay categorías visibles hasta que se seleccione un género
       setCategories([]);
+
+      // Cargar configuración de deadline de pago
+      const { data: eventData } = await supabase
+        .from('events')
+        .select('payment_deadline_hours, modules_config')
+        .eq('id', eventId)
+        .single();
+      if (eventData) {
+        setPaymentDeadlineHours(eventData.payment_deadline_hours ?? null);
+        // Verificar si el módulo está habilitado en modules_config
+        const config = eventData.modules_config as any;
+        setPaymentTimeLimitEnabled(config?.payment_time_limit === true);
+      }
     } catch (error) {
       console.error('Error loading categories:', error);
     } finally {
@@ -1614,15 +1631,43 @@ export default function RegistrationModal({
         }
       }
 
-      // Verificar si el evento es gratis
-      const isFree = checkEventIsFree();
+      // Determinar si la inscripción requiere pago
+      let requiresPayment = false;
 
-      if (isFree) {
-        setSuccessMessage('¡Registro exitoso! Te has registrado correctamente en el evento.');
+      // 1. Verificar precio general del evento
+      if (eventPricing?.general_price && eventPricing.general_price > 0) {
+        requiresPayment = true;
+      }
+      // 2. Verificar precio de la categoría seleccionada
+      else if (formData.category_id) {
+        const selectedCategory = allCategories.find(c => c.id === formData.category_id);
+        if (selectedCategory && selectedCategory.price !== null && selectedCategory.price > 0) {
+          requiresPayment = true;
+        }
+      }
+
+      // 3. Verificar precio del kit seleccionado
+      // Si el kit tiene costo, el registro requiere pago (incluso si la categoría fuera gratis)
+      if (!requiresPayment && formData.kit_id) {
+        const selectedKit = kits.find(k => k.id === formData.kit_id);
+        if (selectedKit && selectedKit.price > 0) {
+          requiresPayment = true;
+        }
+      }
+
+      if (requiresPayment) {
+        if (paymentDeadlineHours && paymentTimeLimitEnabled) {
+          setSuccessMessage(
+            `¡Registro exitoso! Te recordamos que tienes ${paymentDeadlineHours} horas para enviar tu comprobante de pago, de lo contrario tu registro será dado de baja y deberás registrarte de nuevo en este evento.`
+          );
+        } else {
+          setSuccessMessage(
+            '¡Registro exitoso! Recuerda realizar tu pago y enviar el comprobante al organizador para confirmar tu participación.'
+          );
+        }
       } else {
-        setSuccessMessage(
-          '¡Registro exitoso! Recuerda realizar tu pago y enviar el comprobante al organizador para confirmar tu participación.'
-        );
+        // Es un registro 100% gratuito (Evento $0, Categoría $0, Kit $0)
+        setSuccessMessage('¡Registro exitoso! Te has registrado correctamente en el evento.');
       }
 
       setSuccess(true);
