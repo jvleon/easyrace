@@ -113,6 +113,7 @@ const fieldLabels: Record<string, string> = {
   id_photo_url: 'Foto de identificación',
   social_media_photo_url: 'Foto para redes sociales',
   payment_proof_url: 'Comprobante de pago',
+  curp: 'CURP',
 };
 
 const fieldTypes: Record<string, ParsedField['type']> = {
@@ -133,6 +134,7 @@ const fieldTypes: Record<string, ParsedField['type']> = {
   id_photo_url: 'file',
   social_media_photo_url: 'file',
   payment_proof_url: 'file',
+  curp: 'text',
 };
 
 export function parseRegistrationConfig(
