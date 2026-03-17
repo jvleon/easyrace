@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import EventDetail from '../../components/EventDetail';
 import SentryInit from '../../components/SentryInit';
 import { VersionCheckModal } from '../../components/VersionCheckModal';
-import Header from '../../components/Header.astro';
+import NavBar from '../../components/NavBar.astro';
 import Footer from '../../components/Footer.astro';
 import '../../styles/global.css';
 
@@ -74,7 +74,7 @@ const cleanedSlug = slug || 'dynamic';
   <body class="min-h-screen bg-black-asphalt flex flex-col">
     <SentryInit client:load />
     <VersionCheckModal client:load />
-    <Header />
+    <NavBar />
     <main class="flex-1">
       <EventDetail slug={cleanedSlug} client:load />
     </main>

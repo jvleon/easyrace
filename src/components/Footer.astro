@@ -14,10 +14,32 @@ const socialLinks = [
 ];
 ---
 
-<footer class="bg-white-pure/10 border-t border-white-pure/20 mt-auto">
+<footer id="footer" class="bg-white-pure/10 border-t border-white-pure/20 mt-auto">
   <div class="container mx-auto px-4 py-8 md:py-12">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-      <!-- Enlaces legales -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+      <!-- Plataforma -->
+      <div>
+        <h3 class="text-white-pure font-bold text-lg mb-4">Plataforma</h3>
+        <ul class="space-y-2">
+          <li>
+            <a href="/eventos" class="text-white-pure/70 hover:text-white-pure transition-colors text-sm">
+              Eventos
+            </a>
+          </li>
+          <li>
+            <a href="/#resultados" class="text-white-pure/70 hover:text-white-pure transition-colors text-sm">
+              Resultados
+            </a>
+          </li>
+          <li>
+            <a href="/#noticias" class="text-white-pure/70 hover:text-white-pure transition-colors text-sm">
+              Noticias
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Legal -->
       <div>
         <h3 class="text-white-pure font-bold text-lg mb-4">Legal</h3>
         <ul class="space-y-2">
@@ -26,7 +48,7 @@ const socialLinks = [
               href="/terminos-y-condiciones"
               class="text-white-pure/70 hover:text-white-pure transition-colors text-sm"
             >
-              Términos y Condiciones
+              Terminos y Condiciones
             </a>
           </li>
           <li>
@@ -48,10 +70,10 @@ const socialLinks = [
         </ul>
       </div>
 
-      <!-- Redes sociales -->
+      <!-- Contacto -->
       <div>
         <h3 class="text-white-pure font-bold text-lg mb-4">Contacto</h3>
-        <div class="flex gap-4">
+        <div class="flex gap-4 mb-4">
           {socialLinks.map((social) => (
             <a
               href={social.href}
@@ -71,6 +93,7 @@ const socialLinks = [
             </a>
           ))}
         </div>
+        <p class="text-white-pure/50 text-sm">+52 1 993 206 9861</p>
       </div>
     </div>
 

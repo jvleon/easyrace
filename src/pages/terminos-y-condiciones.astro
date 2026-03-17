@@ -1,5 +1,5 @@
 ---
-import Header from '../components/Header.astro';
+import NavBar from '../components/NavBar.astro';
 import SentryInit from '../components/SentryInit';
 import { VersionCheckModal } from '../components/VersionCheckModal';
 import Footer from '../components/Footer.astro';
@@ -41,7 +41,7 @@ const lastUpdate = new Date().toLocaleDateString('es-MX', {
   <body class="min-h-screen bg-black-asphalt flex flex-col font-sans">
     <SentryInit client:load />
     <VersionCheckModal client:load />
-    <Header />
+    <NavBar />
     <main class="container mx-auto px-4 py-12 flex-1">
       <div class="max-w-4xl mx-auto">
         

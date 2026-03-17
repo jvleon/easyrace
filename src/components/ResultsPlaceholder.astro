@@ -1,0 +1,65 @@
+---
+const results = [
+  {
+    event: 'Carrera 5K Primavera',
+    podium: [
+      { place: 1, name: 'Carlos M.', time: '00:18:32' },
+      { place: 2, name: 'Roberto S.', time: '00:19:05' },
+      { place: 3, name: 'Miguel A.', time: '00:19:41' },
+    ],
+  },
+  {
+    event: 'Gran Fondo 100K',
+    podium: [
+      { place: 1, name: 'Ana L.', time: '03:12:15' },
+      { place: 2, name: 'Laura G.', time: '03:18:40' },
+      { place: 3, name: 'Patricia R.', time: '03:22:08' },
+    ],
+  },
+  {
+    event: 'MTB Cross Country',
+    podium: [
+      { place: 1, name: 'David H.', time: '01:45:22' },
+      { place: 2, name: 'Fernando T.', time: '01:47:58' },
+      { place: 3, name: 'Oscar V.', time: '01:50:11' },
+    ],
+  },
+];
+
+const placeColors: Record<number, string> = {
+  1: 'text-yellow-400',
+  2: 'text-gray-300',
+  3: 'text-amber-600',
+};
+---
+
+<!-- TODO: Connect to Supabase when ready -->
+<section id="resultados" class="py-16 md:py-24 bg-black-asphalt" data-section-status="placeholder">
+  <div class="container mx-auto px-4">
+    <h2 class="text-3xl md:text-4xl font-bold text-white-pure mb-2">
+      Resultados Recientes
+    </h2>
+    <p class="text-white-pure/60 mb-10">Podios de los ultimos eventos</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {results.map((result) => (
+        <div class="rounded-lg border border-white-pure/10 bg-white-pure/5 p-5">
+          <h3 class="text-white-pure font-bold text-lg mb-4">{result.event}</h3>
+          <div class="space-y-3">
+            {result.podium.map((entry) => (
+              <div class="flex items-center gap-3">
+                <span class={`font-bold text-lg w-6 text-center ${placeColors[entry.place] || 'text-white-pure/50'}`}>
+                  {entry.place}
+                </span>
+                <div class="flex-1">
+                  <p class="text-white-pure text-sm font-medium">{entry.name}</p>
+                </div>
+                <span class="text-white-pure/60 text-sm font-mono">{entry.time}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
