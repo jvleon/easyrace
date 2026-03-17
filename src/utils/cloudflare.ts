@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { captureError, addBreadcrumb } from './errorTracker';
 
 /**
  * Normaliza el slug del evento según el estándar
@@ -74,12 +75,16 @@ async function getDirectUploadUrl(
   });
 
   if (error) {
-    console.error('Error al invocar edge function:', error);
-    throw new Error(`Error al obtener URL de subida: ${error.message || JSON.stringify(error)}`);
+    const err = new Error(
+      `No se pudo conectar con el servicio de subida de imágenes (cloudflare-direct-upload). ${error.message || JSON.stringify(error)}`
+    );
+    throw err;
   }
 
   if (!data) {
-    throw new Error('La edge function no retornó datos');
+    throw new Error(
+      'El servicio de subida de imágenes no respondió correctamente (cloudflare-direct-upload sin datos)'
+    );
   }
 
   // La edge function retorna uploadURL (mayúscula) e imageId
@@ -144,7 +149,11 @@ async function uploadToCloudflare(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Error al subir imagen a Cloudflare: ${errorText}`);
+    const err = new Error(
+      `Error al subir imagen a Cloudflare (HTTP ${response.status}): ${errorText || 'sin detalles'}`
+    );
+    (err as any).httpStatus = response.status;
+    throw err;
   }
 }
 
@@ -180,19 +189,21 @@ export async function uploadIdPhotoToCloudflare(
   const customId = `identificacion-boletera-${normalizedSlug}-${randomId}`;
 
   try {
-    // 1. Obtener URL de direct upload y URL pública desde la edge function
-    // La edge function está configurada para aceptar peticiones públicas (sin autenticación)
-    // Solo genera la URL, no sube el archivo
+    addBreadcrumb('Iniciando subida de foto de identificación', { eventSlug, fileType: file.type, fileSize: file.size });
     const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
-
-    // 2. Subir la imagen directamente a Cloudflare usando POST con FormData
-    // Según la documentación actualizada, se usa POST (no PUT)
     await uploadToCloudflare(file, uploadUrl);
-
-    // 3. Retornar la URL pública
     return publicUrl;
   } catch (error) {
-    console.error('Error en uploadIdPhotoToCloudflare:', error);
+    captureError(error, {
+      kind: 'file_upload',
+      uploadFunction: 'uploadIdPhotoToCloudflare',
+      fileType: file.type,
+      fileSize: file.size,
+      customId,
+      httpStatus: (error as any).httpStatus,
+      eventSlug,
+      eventId,
+    });
     throw error;
   }
 }
@@ -221,11 +232,21 @@ export async function uploadSocialPhotoToCloudflare(
   const customId = `social-boletera-${normalizedSlug}-${randomId}`;
 
   try {
+    addBreadcrumb('Iniciando subida de foto social', { eventSlug, fileType: file.type, fileSize: file.size });
     const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
     await uploadToCloudflare(file, uploadUrl);
     return publicUrl;
   } catch (error) {
-    console.error('Error en uploadSocialPhotoToCloudflare:', error);
+    captureError(error, {
+      kind: 'file_upload',
+      uploadFunction: 'uploadSocialPhotoToCloudflare',
+      fileType: file.type,
+      fileSize: file.size,
+      customId,
+      httpStatus: (error as any).httpStatus,
+      eventSlug,
+      eventId,
+    });
     throw error;
   }
 }
@@ -261,11 +282,21 @@ export async function uploadPaymentProofToCloudflare(
   const customId = `comprobante-boletera-${normalizedSlug}-${randomId}`;
 
   try {
+    addBreadcrumb('Iniciando subida de comprobante de pago', { eventSlug, fileType: file.type, fileSize: file.size });
     const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
     await uploadToCloudflare(file, uploadUrl);
     return publicUrl;
   } catch (error) {
-    console.error('Error en uploadPaymentProofToCloudflare:', error);
+    captureError(error, {
+      kind: 'file_upload',
+      uploadFunction: 'uploadPaymentProofToCloudflare',
+      fileType: file.type,
+      fileSize: file.size,
+      customId,
+      httpStatus: (error as any).httpStatus,
+      eventSlug,
+      eventId,
+    });
     throw error;
   }
 }
@@ -319,11 +350,21 @@ export async function uploadClubLogoToCloudflare(
   const customId = `club-logo-${normalizedSlug}-${normalizedClubName}-${randomId}`;
 
   try {
+    addBreadcrumb('Iniciando subida de logo de club', { eventSlug, fileType: file.type, fileSize: file.size });
     const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
     await uploadToCloudflare(file, uploadUrl);
     return publicUrl;
   } catch (error) {
-    console.error('Error en uploadClubLogoToCloudflare:', error);
+    captureError(error, {
+      kind: 'file_upload',
+      uploadFunction: 'uploadClubLogoToCloudflare',
+      fileType: file.type,
+      fileSize: file.size,
+      customId,
+      httpStatus: (error as any).httpStatus,
+      eventSlug,
+      eventId,
+    });
     throw error;
   }
 }
@@ -362,11 +403,21 @@ export async function uploadExistingClubPhotoToCloudflare(
   const customId = `club-photo-${normalizedSlug}-${clubId}-${randomId}`;
 
   try {
+    addBreadcrumb('Iniciando subida de foto de club existente', { eventSlug, clubId, fileType: file.type, fileSize: file.size });
     const { uploadUrl, publicUrl } = await getDirectUploadUrl(eventSlug, customId, eventId);
     await uploadToCloudflare(file, uploadUrl);
     return publicUrl;
   } catch (error) {
-    console.error('Error en uploadExistingClubPhotoToCloudflare:', error);
+    captureError(error, {
+      kind: 'file_upload',
+      uploadFunction: 'uploadExistingClubPhotoToCloudflare',
+      fileType: file.type,
+      fileSize: file.size,
+      customId,
+      httpStatus: (error as any).httpStatus,
+      eventSlug,
+      eventId,
+    });
     throw error;
   }
 }

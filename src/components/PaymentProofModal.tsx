@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { uploadPaymentProofToCloudflare } from '../utils/cloudflare';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader, FiUpload } from 'react-icons/fi';
 import ReCAPTCHA from 'react-google-recaptcha';
+import { captureError, addBreadcrumb } from '../utils/errorTracker';
 
 interface PaymentProofModalProps {
   eventId: string;
@@ -129,11 +130,15 @@ export default function PaymentProofModal({
           throw new Error(errorMessage);
         }
       } catch (recaptchaValidationError: any) {
-        console.error('Error validando reCAPTCHA:', recaptchaValidationError);
-        // Mostrar mensaje amigable al usuario
+        captureError(recaptchaValidationError, {
+          kind: 'edge_function',
+          functionName: 'verify-recaptcha',
+          eventId,
+          eventSlug,
+          userEmail: email,
+        });
         const userMessage = recaptchaValidationError.message || 'Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.';
         setError(userMessage);
-        // Resetear reCAPTCHA
         recaptchaRef.current?.reset();
         setRecaptchaToken(null);
         return;
@@ -173,7 +178,14 @@ export default function PaymentProofModal({
         setError(null);
       }
     } catch (err: any) {
-      console.error('Error validating competitor:', err);
+      captureError(err, {
+        kind: 'edge_function',
+        functionName: 'validate-competitor',
+        httpStatus: err.status,
+        eventId,
+        eventSlug,
+        userEmail: email,
+      });
       if (err.status === 429) {
         setError('Demasiadas solicitudes. Intenta más tarde.');
       } else {
@@ -226,8 +238,13 @@ export default function PaymentProofModal({
     try {
       setIsUploading(true);
       setError(null);
+      addBreadcrumb('Iniciando subida de comprobante de pago', {
+        eventId,
+        eventSlug,
+        fileType: selectedFile.type,
+        fileSize: selectedFile.size,
+      });
 
-      // Subir a Cloudflare usando la función de utilidad
       const imageUrl = await uploadPaymentProofToCloudflare(selectedFile, eventSlug, eventId);
 
       // Actualizar el competidor usando la edge function upload-payment-proof
@@ -270,7 +287,16 @@ export default function PaymentProofModal({
         handleClose();
       }, 5000);
     } catch (err: any) {
-      console.error('Error uploading payment proof:', err);
+      captureError(err, {
+        kind: 'file_upload',
+        uploadFunction: 'handleUpload:payment-proof',
+        fileType: selectedFile.type,
+        fileSize: selectedFile.size,
+        httpStatus: err.httpStatus || err.status,
+        eventSlug,
+        eventId,
+        userEmail: email,
+      });
       setError(err.message || 'Error al subir comprobante. Por favor, intenta de nuevo.');
     } finally {
       setIsUploading(false);

@@ -13,6 +13,7 @@ import EventGallery from './EventGallery';
 import EventNavigation from './EventNavigation';
 import { FiDownload, FiUpload, FiHome, FiInfo, FiPackage, FiList, FiImage, FiFileText } from 'react-icons/fi';
 import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa';
+import { captureError } from '../utils/errorTracker';
 import type { MouseEventHandler } from 'react';
 interface EventDetailProps {
   slug: string | undefined;
@@ -312,7 +313,15 @@ export default function EventDetail({ slug }: EventDetailProps) {
         setDistanceGroups(groups);
       }
     } catch (err: any) {
-      console.error('Error loading event:', err);
+      const isNotFound = err.message?.includes('no encontrado') || err.message?.includes('no está disponible');
+      if (!isNotFound) {
+        captureError(err, {
+          kind: 'data_fetch',
+          resource: 'events',
+          operation: 'query',
+          eventSlug: slug,
+        });
+      }
       setError(err.message || 'Error al cargar el evento');
     } finally {
       setLoading(false);
