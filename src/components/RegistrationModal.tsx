@@ -7,7 +7,7 @@ import { validateEmailNotTemporary } from '../utils/emailValidation';
 import { MEXICAN_STATES, checkClubExists, normalizeClubName } from '../utils/clubValidation';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader } from 'react-icons/fi';
 import ReCAPTCHA from 'react-google-recaptcha';
-import { captureError, addBreadcrumb } from '../utils/errorTracker';
+import { captureError, addBreadcrumb, getUserFriendlyMessage } from '../utils/errorTracker';
 
 interface Category {
   id: string;
@@ -1022,8 +1022,8 @@ export default function RegistrationModal({
       // Guardar la URL en el formulario
       handleChange(name, imageUrl);
     } catch (error: any) {
-      captureError(error, {
-        kind: 'file_upload',
+      const context = {
+        kind: 'file_upload' as const,
         uploadFunction: `handleFileChange:${name}`,
         fileType: file.type,
         fileSize: file.size,
@@ -1031,10 +1031,11 @@ export default function RegistrationModal({
         eventSlug,
         eventId,
         userEmail: formData.email,
-      });
+      };
+      captureError(error, context);
       setErrors((prev) => ({
         ...prev,
-        [name]: error.message || 'Error al subir la imagen. Por favor, intenta de nuevo.',
+        [name]: getUserFriendlyMessage(error, context),
       }));
     } finally {
       setLoading(false);
@@ -1338,17 +1339,17 @@ export default function RegistrationModal({
           throw new Error(errorMessage);
         }
       } catch (recaptchaValidationError: any) {
-        captureError(recaptchaValidationError, {
-          kind: 'edge_function',
+        const context = {
+          kind: 'edge_function' as const,
           functionName: 'verify-recaptcha',
           eventSlug,
           eventId,
           userEmail: formData.email,
-        });
-        const userMessage = recaptchaValidationError.message || 'Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.';
+        };
+        captureError(recaptchaValidationError, context);
         setErrors((prev) => ({
           ...prev,
-          recaptcha: userMessage,
+          recaptcha: getUserFriendlyMessage(recaptchaValidationError, context),
         }));
         recaptchaRef.current?.reset();
         setRecaptchaToken(null);
@@ -1734,15 +1735,16 @@ export default function RegistrationModal({
       recaptchaRef.current?.reset();
       // El usuario cerrará manualmente el modal
     } catch (error: any) {
-      captureError(error, {
-        kind: 'form_submission',
+      const context = {
+        kind: 'form_submission' as const,
         step: isPairCategory ? `pair_step_${currentStep}` : 'single',
         isPairCategory,
         eventSlug,
         eventId,
         userEmail: formData.email,
-      });
-      setSubmitError(error.message || 'Error al registrar. Por favor, intenta de nuevo.');
+      };
+      captureError(error, context);
+      setSubmitError(getUserFriendlyMessage(error, context));
     } finally {
       setSubmitting(false);
     }

@@ -94,6 +94,79 @@ function buildExtras(context: ErrorContext): Record<string, unknown> {
   return extras;
 }
 
+// --- Friendly message helpers ---
+
+function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    error.name === 'TypeError' ||
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('network request failed') ||
+    msg.includes('load failed')
+  );
+}
+
+function extractHttpStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  return (error as any).httpStatus ?? (error as any).status;
+}
+
+const FILE_UPLOAD_MESSAGES: Record<number, string> = {
+  400: 'El archivo no es válido o está dañado. Intenta con otra imagen.',
+  401: 'Tu sesión ha expirado. Recarga la página e intenta de nuevo.',
+  403: 'No tienes permiso para subir este archivo. Recarga la página e intenta de nuevo.',
+  413: 'El archivo es demasiado grande. Usa una imagen menor a 2 MB.',
+  429: 'Demasiados intentos seguidos. Espera un momento e intenta de nuevo.',
+  500: 'El servicio de imágenes no está disponible. Intenta más tarde.',
+  502: 'El servicio de imágenes no está disponible. Intenta más tarde.',
+  503: 'El servicio de imágenes está en mantenimiento. Intenta más tarde.',
+};
+
+const EDGE_FUNCTION_MESSAGES: Record<string, string> = {
+  'verify-recaptcha': 'No se pudo verificar el reCAPTCHA. Recarga la página e intenta de nuevo.',
+  'validate-competitor': 'No se pudo validar tu información. Por favor, intenta de nuevo.',
+  'upload-payment-proof': 'No se pudo enviar el comprobante. Por favor, intenta de nuevo.',
+  'cloudflare-direct-upload': 'No se pudo preparar la subida de la imagen. Intenta más tarde.',
+};
+
+/**
+ * Returns a user-friendly error message based on the error and its context.
+ * Use this for messages shown in the UI instead of raw error.message.
+ */
+export function getUserFriendlyMessage(error: unknown, context: ErrorContext): string {
+  if (isNetworkError(error)) {
+    return 'Sin conexión a internet. Verifica tu conexión e intenta de nuevo.';
+  }
+
+  const status = extractHttpStatus(error);
+
+  switch (context.kind) {
+    case 'file_upload': {
+      if (status && FILE_UPLOAD_MESSAGES[status]) return FILE_UPLOAD_MESSAGES[status];
+      if (status && status >= 500) return 'El servicio de subida no está disponible. Intenta más tarde.';
+      return 'No se pudo subir el archivo. Verifica tu conexión e intenta de nuevo.';
+    }
+
+    case 'edge_function': {
+      if (status === 429) return 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.';
+      if (status && status >= 500) return 'El servidor no está disponible en este momento. Intenta más tarde.';
+      return EDGE_FUNCTION_MESSAGES[context.functionName] ?? 'Error de comunicación con el servidor. Por favor, intenta de nuevo.';
+    }
+
+    case 'form_submission': {
+      if (status === 429) return 'Demasiados intentos. Espera un momento e intenta de nuevo.';
+      if (status && status >= 500) return 'El servidor no está disponible. Intenta más tarde.';
+      return 'Error al completar el registro. Por favor, intenta de nuevo.';
+    }
+
+    case 'data_fetch': {
+      return 'Error al cargar la información. Por favor, recarga la página.';
+    }
+  }
+}
+
 // --- Public API (Dependency Inversion: consumers depend on this, not on Sentry directly) ---
 
 /**

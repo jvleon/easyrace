@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { uploadPaymentProofToCloudflare } from '../utils/cloudflare';
 import { FiX, FiCheckCircle, FiAlertCircle, FiLoader, FiUpload } from 'react-icons/fi';
 import ReCAPTCHA from 'react-google-recaptcha';
-import { captureError, addBreadcrumb } from '../utils/errorTracker';
+import { captureError, addBreadcrumb, getUserFriendlyMessage } from '../utils/errorTracker';
 
 interface PaymentProofModalProps {
   eventId: string;
@@ -130,15 +130,15 @@ export default function PaymentProofModal({
           throw new Error(errorMessage);
         }
       } catch (recaptchaValidationError: any) {
-        captureError(recaptchaValidationError, {
-          kind: 'edge_function',
+        const context = {
+          kind: 'edge_function' as const,
           functionName: 'verify-recaptcha',
           eventId,
           eventSlug,
           userEmail: email,
-        });
-        const userMessage = recaptchaValidationError.message || 'Error al verificar el reCAPTCHA. Por favor, intenta de nuevo.';
-        setError(userMessage);
+        };
+        captureError(recaptchaValidationError, context);
+        setError(getUserFriendlyMessage(recaptchaValidationError, context));
         recaptchaRef.current?.reset();
         setRecaptchaToken(null);
         return;
@@ -178,19 +178,16 @@ export default function PaymentProofModal({
         setError(null);
       }
     } catch (err: any) {
-      captureError(err, {
-        kind: 'edge_function',
+      const context = {
+        kind: 'edge_function' as const,
         functionName: 'validate-competitor',
         httpStatus: err.status,
         eventId,
         eventSlug,
         userEmail: email,
-      });
-      if (err.status === 429) {
-        setError('Demasiadas solicitudes. Intenta más tarde.');
-      } else {
-        setError(err.message || 'Error al validar. Por favor, intenta de nuevo.');
-      }
+      };
+      captureError(err, context);
+      setError(getUserFriendlyMessage(err, context));
       setValidationResult(null);
     } finally {
       setIsValidating(false);
@@ -287,8 +284,8 @@ export default function PaymentProofModal({
         handleClose();
       }, 5000);
     } catch (err: any) {
-      captureError(err, {
-        kind: 'file_upload',
+      const context = {
+        kind: 'file_upload' as const,
         uploadFunction: 'handleUpload:payment-proof',
         fileType: selectedFile.type,
         fileSize: selectedFile.size,
@@ -296,8 +293,9 @@ export default function PaymentProofModal({
         eventSlug,
         eventId,
         userEmail: email,
-      });
-      setError(err.message || 'Error al subir comprobante. Por favor, intenta de nuevo.');
+      };
+      captureError(err, context);
+      setError(getUserFriendlyMessage(err, context));
     } finally {
       setIsUploading(false);
     }
