@@ -24,10 +24,16 @@ const articles = [
 <!-- TODO: Connect to CMS/Supabase when ready -->
 <section id="noticias" class="py-16 md:py-24 bg-white-pure/5" data-section-status="placeholder">
   <div class="container mx-auto px-4">
-    <h2 class="text-3xl md:text-4xl font-bold text-white-pure mb-2">
-      Noticias
-    </h2>
-    <p class="text-white-pure/60 mb-10">Lo ultimo del mundo deportivo</p>
+    <div class="flex items-end justify-between mb-10">
+      <div>
+        <h2 class="text-3xl md:text-4xl font-bold text-white-pure mb-2">Noticias</h2>
+        <p class="text-white-pure/60">Lo ultimo del mundo deportivo</p>
+      </div>
+      <a href="/noticias" class="hidden md:inline-flex items-center gap-2 text-orange-primary hover:text-red-fire transition-colors font-medium text-sm">
+        Ver todas
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+      </a>
+    </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       {articles.map((article) => (

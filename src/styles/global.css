@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply bg-black-asphalt text-white-pure;
   }
@@ -115,7 +119,7 @@
 
   /* Hero parallax */
   .parallax-section {
-    height: 200vh;
+    height: 130vh;
     position: relative;
   }
 
@@ -144,14 +148,14 @@
     transform: translateY(0);
   }
 
-  /* Mobile: disable sticky parallax */
+  /* Mobile: static hero, no parallax scroll */
   @media (max-width: 768px) {
     .parallax-section {
       height: auto;
     }
     .sticky-hero {
       position: relative;
-      height: 100vh;
+      height: 100svh;
     }
   }
 }

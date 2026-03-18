@@ -1,11 +1,10 @@
 ---
 import NavBar from '../components/NavBar.astro';
 import HeroSection from '../components/HeroSection.astro';
+import WhatIsEasyRace from '../components/WhatIsEasyRace.astro';
 import FeaturedEvents from '../components/FeaturedEvents';
-import UpcomingEventsPlaceholder from '../components/UpcomingEventsPlaceholder.astro';
-import ResultsPlaceholder from '../components/ResultsPlaceholder.astro';
 import NewsPlaceholder from '../components/NewsPlaceholder.astro';
-import PartnershipsPlaceholder from '../components/PartnershipsPlaceholder.astro';
+import BlogPlaceholder from '../components/BlogPlaceholder.astro';
 import SentryInit from '../components/SentryInit';
 import { VersionCheckModal } from '../components/VersionCheckModal';
 import Footer from '../components/Footer.astro';
@@ -55,11 +54,10 @@ import '../styles/global.css';
     <NavBar />
     <main>
       <HeroSection />
+      <WhatIsEasyRace />
       <FeaturedEvents client:load />
-      <UpcomingEventsPlaceholder />
-      <ResultsPlaceholder />
       <NewsPlaceholder />
-      <PartnershipsPlaceholder />
+      <BlogPlaceholder />
     </main>
     <Footer />
 
