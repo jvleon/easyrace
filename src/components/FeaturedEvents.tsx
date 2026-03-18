@@ -75,7 +75,7 @@ export default function FeaturedEvents() {
             <h2 className="text-3xl md:text-4xl font-bold text-white-pure">
               Eventos Destacados
             </h2>
-            <p className="text-white-pure/60 mt-2">Los eventos mas recientes en la plataforma</p>
+            <p className="text-white-pure/60 mt-2">Los eventos más recientes en la plataforma</p>
           </div>
           <a
             href="/eventos"
