@@ -15,7 +15,7 @@ import logoHorizontal from '../assets/logo_horizontal.png';
       </a>
 
       <!-- Desktop Nav Links -->
-      <div class="hidden md:flex items-center gap-8">
+      <div id="nav-links" class="hidden md:flex items-center gap-8">
         <a href="/#que-hace-easyrace" class="text-white-pure/80 hover:text-orange-primary transition-colors text-sm font-medium">
           ¿Qué hace EasyRace?
         </a>
@@ -28,13 +28,13 @@ import logoHorizontal from '../assets/logo_horizontal.png';
         <a href="/blog" class="text-white-pure/80 hover:text-orange-primary transition-colors text-sm font-medium">
           Blog
         </a>
-        <a href="#footer" class="text-white-pure/80 hover:text-orange-primary transition-colors text-sm font-medium">
+        <a href="/contacto" class="text-white-pure/80 hover:text-orange-primary transition-colors text-sm font-medium">
           Contacto
         </a>
       </div>
 
       <!-- Right side: Login + Mobile hamburger -->
-      <div class="flex items-center gap-3">
+      <div id="nav-actions" class="flex items-center gap-3">
         <!-- Login button -->
         <a
           href="https://manager.easyrace.com.mx"
@@ -92,7 +92,7 @@ import logoHorizontal from '../assets/logo_horizontal.png';
         <a href="/blog" class="text-white-pure/80 hover:text-orange-primary transition-colors text-base font-medium">
           Blog
         </a>
-        <a href="#footer" class="text-white-pure/80 hover:text-orange-primary transition-colors text-base font-medium">
+        <a href="/contacto" class="text-white-pure/80 hover:text-orange-primary transition-colors text-base font-medium">
           Contacto
         </a>
       </div>
@@ -173,6 +173,7 @@ import logoHorizontal from '../assets/logo_horizontal.png';
     initNavbar();
 
     if (shouldDisableLogoLink()) {
+      // Deshabilitar el link del logo
       const logoLink = document.getElementById('logo-link');
       if (logoLink) {
         const span = document.createElement('span');
@@ -180,6 +181,10 @@ import logoHorizontal from '../assets/logo_horizontal.png';
         span.innerHTML = logoLink.innerHTML;
         logoLink.replaceWith(span);
       }
+
+      // Ocultar links de navegación y botones de acción
+      document.getElementById('nav-links')?.style.setProperty('display', 'none');
+      document.getElementById('nav-actions')?.style.setProperty('display', 'none');
     }
   });
 </script>
