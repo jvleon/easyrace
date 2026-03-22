@@ -9,6 +9,23 @@ export default {
         'black-asphalt': '#212121',
         'white-pure': '#FFF',
       },
+      fontFamily: {
+        display: ['Teko', 'sans-serif'],
+      },
+      keyframes: {
+        'fade-in-up': {
+          '0%': { opacity: '0', transform: 'translateY(30px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'slide-in-left': {
+          '0%': { opacity: '0', transform: 'translateX(-30px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
+        },
+      },
+      animation: {
+        'fade-in-up': 'fade-in-up 0.6s ease-out forwards',
+        'slide-in-left': 'slide-in-left 0.6s ease-out forwards',
+      },
     },
   },
   plugins: [],

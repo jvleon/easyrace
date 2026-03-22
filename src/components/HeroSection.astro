@@ -1,0 +1,299 @@
+---
+---
+
+<section class="parallax-section">
+  <div class="sticky-hero flex items-center justify-center relative">
+    <!-- Background gradient -->
+    <div class="absolute inset-0 bg-gradient-to-br from-orange-primary via-red-fire to-black-asphalt"></div>
+
+    <!-- SVG Sweep Wipe layers -->
+    <div id="sweep-container" class="absolute inset-0 z-[5] pointer-events-none overflow-hidden">
+      <!-- First sweep layer (leading edge) -->
+      <svg id="sweep-1" class="absolute top-0 left-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100" style="transform: translateX(-100%);">
+        <polygon points="0,0 85,0 100,100 0,100" fill="rgba(255,87,34,0.35)" />
+      </svg>
+      <!-- Second sweep layer (trailing, slightly delayed) -->
+      <svg id="sweep-2" class="absolute top-0 left-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100" style="transform: translateX(-100%);">
+        <polygon points="0,0 90,0 100,100 0,100" fill="rgba(213,0,0,0.25)" />
+      </svg>
+    </div>
+
+    <!-- Particle canvas -->
+    <canvas id="hero-particles" class="absolute inset-0 w-full h-full pointer-events-none z-[6]"></canvas>
+
+    <!-- Dark overlay for text readability -->
+    <div class="absolute inset-0 bg-black-asphalt/30 z-[7]"></div>
+
+    <!-- Speed streaks canvas (scroll-driven racing lines) -->
+    <canvas id="hero-speed-lines" class="absolute inset-0 w-full h-full pointer-events-none z-[8]"></canvas>
+
+    <!-- Content -->
+    <div id="hero-content" class="relative z-10 text-center px-4 max-w-4xl mx-auto" style="opacity: 0;">
+      <p id="hero-subtitle" class="text-white-pure/70 text-sm md:text-base uppercase tracking-[0.3em] mb-4" style="opacity: 0; transform: translateY(20px);">
+        Plataforma de Eventos Deportivos
+      </p>
+      <h1 id="hero-title-1" class="font-display text-6xl sm:text-7xl md:text-8xl lg:text-9xl font-bold text-white-pure leading-none mb-2" style="opacity: 0; transform: translateX(-40px);">
+        Profesionaliza
+      </h1>
+      <h1 id="hero-title-2" class="font-display text-6xl sm:text-7xl md:text-8xl lg:text-9xl font-bold leading-none mb-6 outline-text" style="opacity: 0; transform: translateX(40px);">
+        Tu Evento
+      </h1>
+      <p id="hero-desc" class="text-white-pure/80 text-lg md:text-xl max-w-2xl mx-auto mb-8" style="opacity: 0; transform: translateY(20px);">
+        Gestiona registros, pagos, asignación de dorsales y más, todo en una sola plataforma diseñada para organizadores de eventos deportivos. Simplifica tu trabajo y ofrece una experiencia profesional a tus participantes.
+      </p>
+      <a
+        id="hero-cta"
+        href="/eventos"
+        class="inline-block px-8 py-4 bg-white-pure text-black-asphalt font-bold rounded-lg hover:bg-orange-primary hover:text-white-pure transition-all duration-300 text-lg"
+        style="opacity: 0; transform: scale(0.9);"
+      >
+        Explorar Eventos
+      </a>
+    </div>
+
+    <!-- Scroll indicator -->
+    <div class="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
+      <div class="w-6 h-10 border-2 border-white-pure/40 rounded-full flex justify-center">
+        <div class="w-1.5 h-3 bg-white-pure/60 rounded-full mt-2 animate-bounce"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import anime from 'animejs';
+
+  function initHeroAnimation() {
+    const tl = anime.timeline({
+      easing: 'easeOutExpo',
+    });
+
+    // Sweep 1: left-to-right wipe
+    tl.add({
+      targets: '#sweep-1',
+      translateX: ['-100%', '110%'],
+      duration: 1200,
+      easing: 'easeInOutQuad',
+    });
+
+    // Sweep 2: left-to-right wipe (slightly delayed, slightly faster)
+    tl.add({
+      targets: '#sweep-2',
+      translateX: ['-100%', '110%'],
+      duration: 1000,
+      easing: 'easeInOutQuad',
+    }, '-=900');
+
+    // Show hero content container
+    tl.add({
+      targets: '#hero-content',
+      opacity: [0, 1],
+      duration: 1,
+    }, '-=600');
+
+    // Title 1 slides in from left
+    tl.add({
+      targets: '#hero-title-1',
+      opacity: [0, 1],
+      translateX: ['-40px', '0px'],
+      duration: 700,
+      easing: 'easeOutExpo',
+    }, '-=600');
+
+    // Title 2 slides in from right
+    tl.add({
+      targets: '#hero-title-2',
+      opacity: [0, 1],
+      translateX: ['40px', '0px'],
+      duration: 700,
+      easing: 'easeOutExpo',
+    }, '-=500');
+
+    // Subtitle fades up
+    tl.add({
+      targets: '#hero-subtitle',
+      opacity: [0, 1],
+      translateY: ['20px', '0px'],
+      duration: 500,
+    }, '-=300');
+
+    // Description fades up
+    tl.add({
+      targets: '#hero-desc',
+      opacity: [0, 1],
+      translateY: ['20px', '0px'],
+      duration: 500,
+    }, '-=300');
+
+    // CTA scales in
+    tl.add({
+      targets: '#hero-cta',
+      opacity: [0, 1],
+      scale: [0.9, 1],
+      duration: 400,
+    }, '-=200');
+  }
+
+  // Lightweight particle effect
+  function initParticles() {
+    const canvas = document.getElementById('hero-particles') as HTMLCanvasElement;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let animationId: number;
+    const particles: { x: number; y: number; vx: number; vy: number; size: number; alpha: number }[] = [];
+
+    function resize() {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    for (let i = 0; i < 40; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        size: Math.random() * 2 + 1,
+        alpha: Math.random() * 0.5 + 0.1,
+      });
+    }
+
+    function draw() {
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+        ctx.fill();
+      });
+      animationId = requestAnimationFrame(draw);
+    }
+    draw();
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        if (!animationId) draw();
+      } else {
+        cancelAnimationFrame(animationId);
+        animationId = 0;
+      }
+    });
+    observer.observe(canvas);
+  }
+
+  // Speed streak lines — horizontal racing lines radiating from center on scroll
+  function initSpeedLines() {
+    const canvas = document.getElementById('hero-speed-lines') as HTMLCanvasElement;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    // Generate a fixed set of streak "lanes" with random offsets
+    const NUM_STREAKS = 32;
+    type Streak = { yOffset: number; length: number; speed: number; alpha: number };
+    const streaks: Streak[] = [];
+    for (let i = 0; i < NUM_STREAKS; i++) {
+      streaks.push({
+        yOffset: (Math.random() - 0.5) * 2,   // -1 to 1, relative to center
+        length:  0.15 + Math.random() * 0.45,  // 15-60% of half-width
+        speed:   0.6 + Math.random() * 0.8,    // depth multiplier
+        alpha:   0.4 + Math.random() * 0.5,
+      });
+    }
+
+    function resize() {
+      canvas.width  = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    let rafId = 0;
+    let currentScroll = 0;
+
+    function drawStreaks() {
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Bell curve: rises 0→1 over first 100px, falls 1→0 from 100px to 220px
+      const streakProgress = currentScroll < 100
+        ? currentScroll / 100
+        : Math.max(0, 1 - (currentScroll - 100) / 120);
+      if (streakProgress <= 0) { ctx.clearRect(0, 0, canvas.width, canvas.height); rafId = 0; return; }
+      const progress = streakProgress;
+
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const halfW = canvas.width / 2;
+
+      streaks.forEach(s => {
+        const len = halfW * s.length * s.speed * progress;
+        const y   = cy + s.yOffset * canvas.height * 0.45;
+        const alpha = s.alpha * progress;
+
+        // Gradient: bright at center-end, transparent at tip
+        const grad = ctx.createLinearGradient(cx - len, y, cx + len, y);
+        grad.addColorStop(0,    `rgba(255,255,255,0)`);
+        grad.addColorStop(0.35, `rgba(255,87,34,${alpha * 0.6})`);
+        grad.addColorStop(0.5,  `rgba(255,255,255,${alpha})`);
+        grad.addColorStop(0.65, `rgba(255,87,34,${alpha * 0.6})`);
+        grad.addColorStop(1,    `rgba(255,255,255,0)`);
+
+        ctx.beginPath();
+        ctx.moveTo(cx - len, y);
+        ctx.lineTo(cx + len, y);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1 + s.speed * 0.8;
+        ctx.stroke();
+      });
+
+      rafId = 0;
+    }
+
+    window.addEventListener('scroll', () => {
+      currentScroll = window.scrollY;
+      if (!rafId) rafId = requestAnimationFrame(drawStreaks);
+    }, { passive: true });
+  }
+
+  // Scroll-driven parallax for hero content — blur + scale exit
+  function initHeroParallax() {
+    const heroContent = document.getElementById('hero-content');
+    if (!heroContent) return;
+    if (window.innerWidth < 768) return;
+
+    window.addEventListener('scroll', () => {
+      const scrollY = window.scrollY;
+      const progress  = Math.min(1, scrollY / 200);
+      const opacity   = Math.max(0, 1 - progress);
+      const translateY = scrollY * 0.4;
+      const blur      = progress * 14;          // 0 → 14px blur at full exit
+      const scale     = 1 + progress * 0.12;   // slight zoom as it rushes away
+
+      heroContent.style.opacity   = String(opacity);
+      heroContent.style.transform = `translateY(${translateY}px) scale(${scale})`;
+      heroContent.style.filter    = `blur(${blur}px)`;
+    }, { passive: true });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initHeroAnimation();
+    initParticles();
+    initSpeedLines();
+    initHeroParallax();
+  });
+</script>
