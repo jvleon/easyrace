@@ -8,6 +8,7 @@ import BlogPlaceholder from '../components/BlogPlaceholder.astro';
 import SentryInit from '../components/SentryInit';
 import { VersionCheckModal } from '../components/VersionCheckModal';
 import Footer from '../components/Footer.astro';
+import ChatWidget from '../components/chat/ChatWidget';
 import '../styles/global.css';
 ---
 
@@ -60,6 +61,7 @@ import '../styles/global.css';
       <BlogPlaceholder />
     </main>
     <Footer />
+    <ChatWidget client:load />
 
     <!-- Section reveal on scroll -->
     <script is:inline>

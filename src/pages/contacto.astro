@@ -1,6 +1,7 @@
 ---
 import NavBar from '../components/NavBar.astro';
 import Footer from '../components/Footer.astro';
+import ChatWidget from '../components/chat/ChatWidget';
 import SentryInit from '../components/SentryInit';
 import { VersionCheckModal } from '../components/VersionCheckModal';
 import '../styles/global.css';
@@ -162,5 +163,6 @@ import '../styles/global.css';
       </div>
     </main>
     <Footer />
+    <ChatWidget client:load />
   </body>
 </html>

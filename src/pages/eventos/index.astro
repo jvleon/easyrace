@@ -4,6 +4,7 @@ import EventsListFiltered from '../../components/EventsListFiltered';
 import SentryInit from '../../components/SentryInit';
 import { VersionCheckModal } from '../../components/VersionCheckModal';
 import Footer from '../../components/Footer.astro';
+import ChatWidget from '../../components/chat/ChatWidget';
 import '../../styles/global.css';
 ---
 
@@ -50,5 +51,6 @@ import '../../styles/global.css';
       <EventsListFiltered client:load />
     </main>
     <Footer />
+    <ChatWidget client:load />
   </body>
 </html>
