@@ -25,6 +25,15 @@ const STORAGE_KEYS = {
   conversationIdShared: 'easyrace_chat_active_conversation',
 }
 
+interface BankInfo {
+  bank?: string
+  holder?: string
+  account?: string
+  clabe?: string
+  reference?: string
+  event_name?: string
+}
+
 /** Extrae marcador <<quick_replies:[...]>> del mensaje del asistente. */
 function parseQuickReplies(content: string): { text: string; quickReplies: string[] } {
   const match = content.match(/<<quick_replies:\s*(\[[\s\S]*\])>>/)
@@ -37,6 +46,73 @@ function parseQuickReplies(content: string): { text: string; quickReplies: strin
   } catch {
     return { text: content, quickReplies: [] }
   }
+}
+
+/** Extrae marcador <<bank_info:{...}>> del mensaje del asistente. */
+function parseBankInfo(content: string): { text: string; bankInfo: BankInfo | null } {
+  const match = content.match(/<<bank_info:([\s\S]*?)>>/)
+  if (!match) return { text: content, bankInfo: null }
+  try {
+    const bankInfo = JSON.parse(match[1]) as BankInfo
+    const text = content.replace(/<<bank_info:[\s\S]*?>>/, '').trim()
+    return { text, bankInfo }
+  } catch {
+    return { text: content, bankInfo: null }
+  }
+}
+
+/** Formatea CLABE con espacios cada 6 dígitos. */
+function formatClabe(clabe: string): string {
+  return clabe.replace(/(\d{6})(?=\d)/g, '$1 ')
+}
+
+/** Tarjeta de datos bancarios con botón copiar por campo. */
+function BankInfoCard({ info }: { info: BankInfo }) {
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const copyToClipboard = (value: string, field: string) => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(field)
+      setTimeout(() => setCopied(null), 2000)
+    })
+  }
+
+  const fields: { label: string; value: string; key: string }[] = []
+  if (info.bank) fields.push({ label: 'Banco', value: info.bank, key: 'bank' })
+  if (info.holder) fields.push({ label: 'Titular', value: info.holder, key: 'holder' })
+  if (info.account) fields.push({ label: 'Cuenta', value: info.account, key: 'account' })
+  if (info.clabe) fields.push({ label: 'CLABE', value: formatClabe(info.clabe), key: 'clabe' })
+  if (info.reference) fields.push({ label: 'Concepto', value: info.reference, key: 'reference' })
+
+  return (
+    <div className="mt-2 rounded-lg border border-gray-600 bg-gray-800/80 overflow-hidden">
+      <div className="px-3 py-2 bg-gray-700/50 border-b border-gray-600 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-orange-400">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+          <line x1="1" y1="10" x2="23" y2="10" />
+        </svg>
+        <span className="text-xs font-medium text-gray-300">Datos para transferencia</span>
+      </div>
+      <div className="divide-y divide-gray-700">
+        {fields.map(({ label, value, key }) => (
+          <div key={key} className="flex items-center justify-between px-3 py-2 gap-2">
+            <div className="min-w-0">
+              <div className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</div>
+              <div className="text-sm text-white font-mono truncate">{value}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => copyToClipboard(key === 'clabe' ? info.clabe! : value, key)}
+              className="shrink-0 text-xs px-2 py-1 rounded border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+              aria-label={`Copiar ${label}`}
+            >
+              {copied === key ? '✓' : 'Copiar'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 /** Carga mensajes de la BD para una conversación existente. */
@@ -327,8 +403,11 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
         ) : (
           messages.map((msg: Message) => {
             const isLastMessage = msg.id === messages[messages.length - 1]?.id
+            // Parse bank info first, then quick replies from the remaining text
+            const { text: textAfterBank, bankInfo } =
+              msg.role === 'assistant' ? parseBankInfo(msg.content) : { text: msg.content, bankInfo: null }
             const { text: assistantText, quickReplies } =
-              msg.role === 'assistant' ? parseQuickReplies(msg.content) : { text: msg.content, quickReplies: [] as string[] }
+              msg.role === 'assistant' ? parseQuickReplies(textAfterBank) : { text: textAfterBank, quickReplies: [] as string[] }
             const showQuickReplies =
               msg.role === 'assistant' && isLastMessage && !sending && quickReplies.length > 0
 
@@ -346,6 +425,7 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
                     <div className="rounded-xl rounded-bl-sm px-3.5 py-2.5 text-sm leading-relaxed break-words bg-gray-800 text-gray-200 chat-markdown">
                       <ReactMarkdown>{assistantText}</ReactMarkdown>
                     </div>
+                    {bankInfo && <BankInfoCard info={bankInfo} />}
                     {showQuickReplies && (
                       <div className="flex flex-wrap gap-1.5 mt-2" role="group" aria-label="Respuestas rápidas">
                         {quickReplies.map((reply, i) => (
