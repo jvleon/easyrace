@@ -15,7 +15,7 @@ interface ChatWindowProps {
   sessionId: string
 }
 
-const WELCOME_MESSAGE = '¡Hola! Soy **Crono**, el asistente virtual de EasyRace. Estoy aquí para ayudarte a resolver tus dudas sobre EasyRace y sus eventos.'
+const WELCOME_MESSAGE = '¡Hola! Soy **Cronito**, el asistente virtual de EasyRace. Estoy aquí para ayudarte con tus dudas sobre eventos y carreras.'
 
 const STORAGE_KEYS = {
   conversationId: 'easyrace_chat_conversation_id',
@@ -300,7 +300,7 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
   // Pantalla de aceptar términos
   if (!acceptedTerms) {
     return (
-      <div className={`fixed bottom-6 right-6 z-40 w-[380px] max-w-[calc(100vw-2rem)] bg-gray-900 rounded-2xl shadow-2xl border border-gray-700 flex flex-col overflow-hidden max-[500px]:inset-2 max-[500px]:w-auto max-[500px]:rounded-xl ${!isVisible ? 'hidden' : ''}`}>
+      <div className={`fixed z-40 bg-gray-900 shadow-2xl border border-gray-700 flex flex-col overflow-hidden bottom-2 left-2 right-2 rounded-xl max-h-[calc(100dvh-5rem)] sm:left-auto sm:bottom-6 sm:right-6 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-6rem)] sm:rounded-2xl ${!isVisible ? 'hidden' : ''}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
           <div className="flex items-center gap-2">
@@ -376,7 +376,7 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
 
   // Chat activo
   return (
-    <div className={`fixed bottom-6 right-6 z-40 w-[380px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[calc(100vh-4rem)] bg-gray-900 rounded-2xl shadow-2xl border border-gray-700 flex flex-col overflow-hidden max-[500px]:inset-2 max-[500px]:w-auto max-[500px]:h-auto max-[500px]:rounded-xl ${!isVisible ? 'hidden' : ''}`}>
+    <div className={`fixed z-40 bg-gray-900 shadow-2xl border border-gray-700 flex flex-col overflow-hidden bottom-1 left-2 right-2 rounded-xl h-[min(520px,calc(100dvh-6rem))] sm:left-auto sm:bottom-6 sm:right-6 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:h-[min(520px,calc(100dvh-7.8rem))] sm:rounded-2xl ${!isVisible ? 'hidden' : ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 shrink-0">
         <div className="flex items-center gap-2">
@@ -423,7 +423,15 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
                 ) : (
                   <div className="max-w-[80%]">
                     <div className="rounded-xl rounded-bl-sm px-3.5 py-2.5 text-sm leading-relaxed break-words bg-gray-800 text-gray-200 chat-markdown">
-                      <ReactMarkdown>{assistantText}</ReactMarkdown>
+                      <ReactMarkdown
+                        components={{
+                          a: ({ href, children, ...props }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                              {children}
+                            </a>
+                          ),
+                        }}
+                      >{assistantText}</ReactMarkdown>
                     </div>
                     {bankInfo && <BankInfoCard info={bankInfo} />}
                     {showQuickReplies && (
@@ -461,8 +469,15 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
         )}
 
         {error && (
-          <div className="text-center">
-            <p className="text-red-400 text-xs">{error}</p>
+          <div className="mx-auto max-w-[90%] bg-red-900/30 border border-red-700/50 rounded-lg px-3 py-2 text-center">
+            <p className="text-red-300 text-xs mb-1.5">No se pudo enviar tu mensaje. Intenta de nuevo.</p>
+            <button
+              type="button"
+              onClick={() => { setError(null); if (input) sendMessage(input) }}
+              className="text-xs px-3 py-1 rounded-full border border-red-600/60 text-red-300 hover:bg-red-800/40 transition-colors"
+            >
+              Reintentar
+            </button>
           </div>
         )}
 
