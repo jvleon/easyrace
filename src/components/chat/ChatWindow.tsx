@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { supabase } from '../../lib/supabase'
+import { isDemoSubdomain } from '../../utils/subdomain'
 
 interface Message {
   id: string
@@ -255,6 +256,7 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
           event_slug: eventSlug,
           message: trimmedInput,
           accepted_terms: !conversationId ? true : undefined,
+          is_demo: isDemoSubdomain(),
         },
       })
 
@@ -300,7 +302,7 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
   // Pantalla de aceptar términos
   if (!acceptedTerms) {
     return (
-      <div className={`fixed z-40 bg-gray-900 shadow-2xl border border-gray-700 flex flex-col overflow-hidden bottom-2 left-2 right-2 rounded-xl max-h-[calc(100dvh-5rem)] sm:left-auto sm:bottom-6 sm:right-6 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-6rem)] sm:rounded-2xl ${!isVisible ? 'hidden' : ''}`}>
+      <div className={`fixed z-[60] bg-gray-900 shadow-2xl border border-gray-700 flex flex-col overflow-hidden bottom-2 left-2 right-2 rounded-xl max-h-[calc(100dvh-5rem)] sm:left-auto sm:bottom-6 sm:right-6 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:max-h-[calc(100dvh-6rem)] sm:rounded-2xl ${!isVisible ? 'hidden' : ''}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
           <div className="flex items-center gap-2">
@@ -376,7 +378,7 @@ export default function ChatWindow({ onMinimize, isVisible, eventSlug, sessionId
 
   // Chat activo
   return (
-    <div className={`fixed z-40 bg-gray-900 shadow-2xl border border-gray-700 flex flex-col overflow-hidden bottom-1 left-2 right-2 rounded-xl h-[min(520px,calc(100dvh-6rem))] sm:left-auto sm:bottom-6 sm:right-6 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:h-[min(520px,calc(100dvh-7.8rem))] sm:rounded-2xl ${!isVisible ? 'hidden' : ''}`}>
+    <div className={`fixed z-[60] bg-gray-900 shadow-2xl border border-gray-700 flex flex-col overflow-hidden bottom-1 left-2 right-2 rounded-xl h-[min(520px,calc(100dvh-6rem))] sm:left-auto sm:bottom-6 sm:right-6 sm:w-[380px] sm:max-w-[calc(100vw-2rem)] sm:h-[min(520px,calc(100dvh-7.8rem))] sm:rounded-2xl ${!isVisible ? 'hidden' : ''}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 shrink-0">
         <div className="flex items-center gap-2">

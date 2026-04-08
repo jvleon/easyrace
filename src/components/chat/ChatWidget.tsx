@@ -122,6 +122,7 @@ export default function ChatWidget({ eventSlug }: ChatWidgetProps) {
         onClick={handleOpen}
         isOpen={isOpen}
         showHint={!hasAcceptedTerms && !isMounted}
+        hasEventNav={!!resolvedSlug}
       />
       {isMounted && (
         <ChatWindow
