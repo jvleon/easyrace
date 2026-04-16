@@ -31,6 +31,7 @@ interface Kit {
   is_pair_kit?: boolean; // Indica si el kit es para parejas
   max_quantity?: number | null;
   sold_quantity?: number | null;
+  registered_quantity?: number | null;
 }
 
 interface KitSize {
@@ -470,7 +471,7 @@ export default function RegistrationModal({
       // Cargar TODOS los kits activos del evento primero (incluyendo category_ids e is_pair_kit)
       const { data: allKitsData, error: kitsError } = await supabase
         .from('kits')
-        .select('id, name, price, description, image_url, sold_quantity, max_quantity, category_ids, is_pair_kit')
+        .select('id, name, price, description, image_url, sold_quantity, max_quantity, registered_quantity, category_ids, is_pair_kit')
         .eq('event_id', eventId)
         .eq('is_active', true)
         .or(`sale_deadline.is.null,sale_deadline.gte.${now}`)
@@ -546,11 +547,11 @@ export default function RegistrationModal({
         })
       );
 
-      // Filtrar por disponibilidad (max_quantity)
+      // Filtrar por disponibilidad (max_quantity vs registered_quantity)
       const availableKits = kitsWithSizes.filter((kit) => {
         const maxQuantity = kit.max_quantity !== null ? Number(kit.max_quantity) : null;
-        const soldQuantity = Number(kit.sold_quantity) || 0;
-        return maxQuantity === null || soldQuantity < maxQuantity;
+        const registeredQuantity = Number(kit.registered_quantity) || 0;
+        return maxQuantity === null || registeredQuantity < maxQuantity;
       });
 
       setKits(availableKits);
