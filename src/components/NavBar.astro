@@ -1,8 +1,28 @@
 ---
 import logoHorizontal from '../assets/logo_horizontal.png';
+const isLocalDev = import.meta.env.MODE === 'localdev';
+const localSupabaseUrl = import.meta.env.PUBLIC_SUPABASE_URL ?? 'localhost';
 ---
 
-<header id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-black-asphalt/90 backdrop-blur-md">
+{isLocalDev && (
+  <div
+    id="local-dev-banner"
+    style="position:fixed;top:0;left:0;right:0;z-index:10000;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(90deg,#f59e0b,#d97706);color:#1c1917;font-size:12px;font-weight:700;font-family:monospace;padding:5px 16px;letter-spacing:0.05em;box-shadow:0 2px 8px rgba(245,158,11,0.4);user-select:none;"
+  >
+    <span style="width:8px;height:8px;border-radius:50%;background:#1c1917;display:inline-block;animation:localPulse 1.5s ease-in-out infinite;"></span>
+    🔧 MODO LOCAL — Supabase:
+    <code style="background:rgba(0,0,0,0.15);padding:1px 6px;border-radius:3px;">{localSupabaseUrl}</code>
+    — Los datos NO son de producción
+    <style>
+      @keyframes localPulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.4; transform: scale(0.7); }
+      }
+    </style>
+  </div>
+)}
+
+<header id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-black-asphalt/90 backdrop-blur-md" style={isLocalDev ? 'top: 29px;' : ''}>
   <nav class="container mx-auto px-4 py-4">
     <div class="flex items-center justify-between">
       <!-- Logo -->
@@ -101,7 +121,7 @@ import logoHorizontal from '../assets/logo_horizontal.png';
 </header>
 
 <!-- Spacer to prevent content from hiding behind fixed nav -->
-<div class="h-[72px]"></div>
+<div class={isLocalDev ? 'h-[101px]' : 'h-[72px]'}></div>
 
 <script>
   // Scroll detection: add background on scroll

@@ -4,6 +4,7 @@
   "version": "1.5.0",
   "scripts": {
     "dev": "astro dev",
+    "dev:local": "astro dev --mode localdev",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
@@ -11,7 +12,13 @@
     "security:penetration": "node scripts/security-penetration-tests.js",
     "security:browser": "node scripts/browser-security-tests.js",
     "security:all": "npm run security:penetration && npm run security:browser",
-    "rpc:test": "node scripts/test-rpc-functions.js"
+    "rpc:test": "node scripts/test-rpc-functions.js",
+    "test:unit": "vitest run",
+    "test:unit:ui": "vitest --ui",
+    "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:all": "vitest run && playwright test"
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
@@ -32,5 +39,14 @@
     "react-icons": "^5.5.0",
     "react-select": "^5.10.2",
     "tailwindcss": "^3.4.18"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitest/ui": "^4.1.4",
+    "jsdom": "^29.0.2",
+    "vitest": "^4.1.4"
   }
 }

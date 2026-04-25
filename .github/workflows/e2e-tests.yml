@@ -1,0 +1,75 @@
+name: E2E Tests — easyrace-landingpage
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'easyrace-ladingpage/**'
+
+defaults:
+  run:
+    working-directory: easyrace-ladingpage
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Instalar Playwright Browsers
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Levantar Supabase local
+        run: supabase start
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Obtener credenciales de Supabase local
+        id: supabase
+        run: |
+          STATUS=$(supabase status --output json)
+          echo "url=$(echo $STATUS | jq -r '.API_URL')" >> $GITHUB_OUTPUT
+          echo "anon_key=$(echo $STATUS | jq -r '.ANON_KEY')" >> $GITHUB_OUTPUT
+
+      - name: Crear archivo .env con credenciales locales
+        run: |
+          echo "PUBLIC_SUPABASE_URL=${{ steps.supabase.outputs.url }}" > .env
+          echo "PUBLIC_SUPABASE_ANON_KEY=${{ steps.supabase.outputs.anon_key }}" >> .env
+          echo "PUBLIC_RECAPTCHA_SITE_KEY=${{ secrets.TEST_RECAPTCHA_SITE_KEY }}" >> .env
+
+      - name: Correr tests unitarios
+        run: pnpm run test:unit
+
+      - name: Correr tests E2E
+        run: pnpm run test:e2e
+
+      - name: Subir reporte de Playwright
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-landingpage
+          path: easyrace-ladingpage/playwright-report/
+          retention-days: 7
