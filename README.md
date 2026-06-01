@@ -98,10 +98,14 @@ Las páginas de eventos se generan estáticamente en build time usando `getStati
 
 ## Variables de Entorno
 
-El proyecto usa variables de entorno con prefijo `VITE_` o `PUBLIC_` para compatibilidad con Astro:
+En Astro, las variables accesibles en el cliente **deben** usar el prefijo `PUBLIC_`:
 
-- `VITE_SUPABASE_URL`: URL del proyecto Supabase
-- `VITE_SUPABASE_ANON_KEY`: Clave anónima de Supabase
+- `PUBLIC_SUPABASE_URL`: URL del proyecto Supabase
+- `PUBLIC_SUPABASE_ANON_KEY`: Clave anónima de Supabase
+- `PUBLIC_RECAPTCHA_SITE_KEY`: Site key de Google reCAPTCHA v2 (opcional)
+- `PUBLIC_CLOUDFLARE_IMAGES_URL`: URL base de entrega de imágenes de Cloudflare (opcional)
+
+> **Nota**: El cliente Supabase también acepta `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` por compatibilidad, pero el prefijo correcto para Astro es `PUBLIC_`.
 
 ## Base de Datos
 
@@ -117,3 +121,12 @@ El proyecto se conecta a Supabase y utiliza las siguientes tablas:
 - Rojo fuego: `#D50000`
 - Negro asfalto: `#212121`
 - Blanco puro: `#FFF`
+
+## Documentación
+
+- [Variables de entorno](../docs/frontend/env-vars.md)
+- [Arquitectura frontend](../docs/frontend/architecture.md)
+- [Deployment a Hostinger](../docs/frontend/deployment.md)
+- [API reference (contratos de datos)](../docs/frontend/landing-page/api-reference.md)
+- [Flujo de inscripción](../docs/frontend/landing-page/registration-flow.md)
+- [Build estático y eventos](../docs/frontend/landing-page/static-build.md)
